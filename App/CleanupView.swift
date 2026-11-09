@@ -8,7 +8,7 @@ import UIKit
 
 @MainActor
 final class CleanupModel: ObservableObject {
-    private enum Phase: Equatable {
+    enum Phase: Equatable {
         case idle
         case scanning
         case cleaning
@@ -23,7 +23,7 @@ final class CleanupModel: ObservableObject {
     }
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var plan: CleanupPlan?
-    @Published private(set) var report: CleanupReport?
+    @Published var report: CleanupReport?
     @Published private(set) var progress: CleanupProgress?
     @Published var confirmClean = false
     @Published var errorMessage: String?

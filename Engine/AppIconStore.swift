@@ -91,7 +91,7 @@ final class AppIconStore: ObservableObject {
         }
     }
 
-    private static func fetchIcon(_ identifier: String) -> Data? {
+    nonisolated private static func fetchIcon(_ identifier: String) -> Data? {
         if let data = WFAppIconData(identifier) { return data }
 
         // A plugin or daemon often has no proxy of its own. Walk up the
@@ -105,7 +105,7 @@ final class AppIconStore: ObservableObject {
         return nil
     }
 
-    private static func fileName(_ identifier: String) -> String {
+    nonisolated private static func fileName(_ identifier: String) -> String {
         let safe = identifier.map { character -> Character in
             if character.isLetter || character.isNumber || character == "." || character == "-" {
                 return character

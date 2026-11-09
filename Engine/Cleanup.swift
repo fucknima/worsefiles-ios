@@ -135,7 +135,6 @@ final class CleanupEngine: @unchecked Sendable {
               containers: [CleanupContainer],
               token: CancelToken,
               progress: @escaping (CleanupProgress) -> Void) -> CleanupPlan {
-        let manager = FileManager.default
         var targets: [CleanupTarget] = []
         var failed: [String] = []
         var scanned = 0
