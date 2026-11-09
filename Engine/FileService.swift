@@ -116,6 +116,11 @@ final class FileService: @unchecked Sendable {
     func facts(for path: String, ensureAccess: Bool = true) -> ContainerFacts? {
         queue.sync {
             let key = PathTool.canonical(path)
+            // The identifier xattr usually resolves without a token. Only pay
+            // for a container query when the metadata plist is needed.
+            if let facts = ContainerMetadata.facts(atPath: key), facts.identifier != nil {
+                return facts
+            }
             if ensureAccess && !nativelyAccessible(key) {
                 if (try? broker.access(key)) == nil {
                     _ = try? broker.access(PathTool.parent(of: key))

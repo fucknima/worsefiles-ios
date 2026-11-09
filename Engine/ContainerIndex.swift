@@ -54,6 +54,7 @@ final class ContainerIndex: ObservableObject {
     @Published private(set) var installedAppCount = 0
     @Published private(set) var installedPathCount = 0
     @Published private(set) var installedListAvailable = false
+    @Published private(set) var installedListSource: String?
 
     private var running: Task<ContainerScanSummary, Error>?
     private var reconcileTask: Task<ContainerReconcileSummary, Never>?
@@ -174,6 +175,16 @@ final class ContainerIndex: ObservableObject {
                 }
             }
             namesChanged = catalog.setAppNames(names)
+
+            var bundles: [String: String] = [:]
+            for app in apps {
+                if let bundle = app.bundlePath, !bundle.isEmpty {
+                    bundles[app.identifier] = bundle
+                }
+            }
+            if catalog.setAppBundlePaths(bundles) {
+                namesChanged = true
+            }
             AppIconStore.shared.prefetch(apps.map { $0.identifier })
 
             var knownPaths = Set(livePathMap.keys)
@@ -186,13 +197,14 @@ final class ContainerIndex: ObservableObject {
         installedAppCount = apps.count
         installedPathCount = livePathCount
         installedListAvailable = hasList
+        installedListSource = hasList ? InstalledApps.source : nil
 
         if !loggedReconcile {
             loggedReconcile = true
             if hasList {
                 Log.info("reconcile apps=\(apps.count) paths=\(livePathCount) +\(added) -\(removed)")
             } else {
-                Log.error("reconcile: installed app list unavailable")
+                Log.info("reconcile: LaunchServices API unavailable; using lstat and lsd names")
             }
         } else if added > 0 || removed > 0 {
             Log.info("reconcile +\(added) -\(removed)")
@@ -305,6 +317,8 @@ final class ContainerIndex: ObservableObject {
                                           watermark: end,
                                           replace: replace,
                                           version: Self.indexVersion)
+        let daemons = catalog.scanRecord(for: Roots.internalDaemon.path)?.paths ?? []
+        AppNames.shared.ensureLoaded(daemonContainers: daemons)
         let total = roots.reduce(0) { $0 + catalog.count(for: $1) }
         lastCompleted = Date()
         lastAdded = added

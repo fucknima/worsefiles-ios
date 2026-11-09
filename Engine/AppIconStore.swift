@@ -9,6 +9,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 @MainActor
 final class AppIconStore: ObservableObject {
@@ -65,6 +66,7 @@ final class AppIconStore: ObservableObject {
         pending.insert(identifier)
 
         let directory = self.directory
+        let bundlePath = Catalog.shared.appBundlePath(for: identifier)
         queue.async { [weak self] in
             let fileURL = directory?.appendingPathComponent(Self.fileName(identifier))
 
@@ -77,7 +79,7 @@ final class AppIconStore: ObservableObject {
                 return
             }
 
-            let data = Self.fetchIcon(identifier)
+            let data = Self.fetchIcon(identifier, bundlePath: bundlePath)
             if let data, let fileURL {
                 try? data.write(to: fileURL, options: .atomic)
             }
@@ -91,8 +93,9 @@ final class AppIconStore: ObservableObject {
         }
     }
 
-    nonisolated private static func fetchIcon(_ identifier: String) -> Data? {
+    nonisolated private static func fetchIcon(_ identifier: String, bundlePath: String?) -> Data? {
         if let data = WFAppIconData(identifier) { return data }
+        if let bundlePath, let data = bundleIcon(bundlePath) { return data }
 
         // A plugin or daemon often has no proxy of its own. Walk up the
         // reverse-DNS identifier until an installed app answers.
@@ -101,8 +104,32 @@ final class AppIconStore: ObservableObject {
             candidate = String(candidate[..<dot])
             guard candidate.contains(".") else { break }
             if let data = WFAppIconData(candidate) { return data }
+            if let path = Catalog.shared.appBundlePath(for: candidate),
+               let data = bundleIcon(path) {
+                return data
+            }
         }
         return nil
+    }
+
+    nonisolated private static func bundleIcon(_ path: String) -> Data? {
+        let broker = SandboxBroker.shared
+        var leases: [String] = []
+        if (try? broker.access(path, quiet: true)) != nil {
+            leases.append(path)
+        }
+        if leases.isEmpty {
+            let container = (path as NSString).deletingLastPathComponent
+            if (try? broker.access(container, quiet: true)) != nil {
+                leases.append(container)
+            }
+        }
+        defer {
+            for lease in leases {
+                broker.release(lease, quiet: true)
+            }
+        }
+        return WFBundleIconData(path) as Data?
     }
 
     nonisolated private static func fileName(_ identifier: String) -> String {

@@ -74,6 +74,7 @@ final class AppModel: ObservableObject {
     }
 
     private func refreshIndex(announce: Bool) async {
+        AppNames.shared.ensureLoaded(daemonContainers: Catalog.shared.scanRecord(for: Roots.internalDaemon.path)?.paths ?? [])
         let reconcile = await ContainerIndex.shared.reconcileIfNeeded(minInterval: 5)
         do {
             let summary = try await ContainerIndex.shared.ensureScanned(full: false)

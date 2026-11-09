@@ -21,6 +21,13 @@ FOUNDATION_EXPORT NSArray<NSDictionary<NSString *, id> *> * _Nullable WFInstalle
 // Last-resort lookup for an app whose proxy has no dataContainerURL.
 FOUNDATION_EXPORT NSString * _Nullable WFContainerPathForIdentifier(NSString *identifier);
 
+// Which source produced the last WFInstalledApps() answer.
+FOUNDATION_EXPORT NSString * _Nullable WFInstalledAppsSource(void);
+
+// Reads an icon from an app bundle's Info.plist, icon files, or Assets.car.
+// The caller must hold a sandbox extension for the bundle or its container.
+FOUNDATION_EXPORT NSData * _Nullable WFBundleIconData(NSString *bundlePath);
+
 // PNG icon for an installed app. Returns nil when LaunchServices has no proxy
 // or no icon variant; callers fall back to the parent app's icon.
 FOUNDATION_EXPORT NSData * _Nullable WFAppIconData(NSString *identifier);

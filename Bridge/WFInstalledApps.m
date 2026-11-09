@@ -2,15 +2,15 @@
 //  WFInstalledApps.m
 //  WorseFiles
 //
-//  LSApplicationWorkspace lives in MobileCoreServices on iOS. It is loaded
-//  with dlopen so the app has no link-time dependency on the private
-//  framework, and every property is read through respondsToSelector because
-//  the class has changed shape across releases.
+//  LaunchServices' API refuses this app on iOS 27, so the installed-app list
+//  is best effort. Names come from the lsd CSStore (WQNames.m) and icons from
+//  UIKit; this file keeps the optional list and the MCM path fallback.
 //
 
 #import "WFInstalledApps.h"
 #import <objc/message.h>
 #import <dlfcn.h>
+#import <UIKit/UIKit.h>
 
 static void WFOpenFramework(NSString *path) {
     static NSMutableSet<NSString *> *opened = nil;
@@ -32,6 +32,14 @@ static id WFGet(id object, NSString *selectorName) {
     return ((id (*)(id, SEL))objc_msgSend)(object, selector);
 }
 
+static NSString *WFString(id value) {
+    if ([value isKindOfClass:NSString.class]) return value;
+    if ([value isKindOfClass:NSURL.class]) return [(NSURL *)value path];
+    return nil;
+}
+
+#pragma mark - LaunchServices
+
 static id WFWorkspace(void) {
     WFOpenFramework(@"/System/Library/Frameworks/MobileCoreServices.framework/MobileCoreServices");
     WFOpenFramework(@"/System/Library/PrivateFrameworks/MobileCoreServices.framework/MobileCoreServices");
@@ -43,7 +51,7 @@ static id WFWorkspace(void) {
     return ((id (*)(id, SEL))objc_msgSend)(cls, @selector(defaultWorkspace));
 }
 
-static NSArray *WFAllApplications(id workspace) {
+static NSArray *WFAllLaunchServicesApplications(id workspace) {
     for (NSString *name in @[@"allApplications", @"allInstalledApplications"]) {
         id value = WFGet(workspace, name);
         if ([value isKindOfClass:NSArray.class] && [value count] > 0) {
@@ -53,11 +61,11 @@ static NSArray *WFAllApplications(id workspace) {
     return nil;
 }
 
-NSArray<NSDictionary<NSString *, id> *> *WFInstalledApps(void) {
+static NSArray *WFAppsFromLaunchServices(void) {
     id workspace = WFWorkspace();
     if (!workspace) return nil;
 
-    NSArray *proxies = WFAllApplications(workspace);
+    NSArray *proxies = WFAllLaunchServicesApplications(workspace);
     if (!proxies) return nil;
 
     NSMutableArray<NSDictionary<NSString *, id> *> *result = [NSMutableArray array];
@@ -94,9 +102,6 @@ NSArray<NSDictionary<NSString *, id> *> *WFInstalledApps(void) {
             @"type": type ?: @"",
         }];
 
-        // PluginKit containers belong to extensions, not to the app proxy.
-        // Newer LaunchServices exposes their data container on the plugin
-        // proxy; when it does not, the inode delta still covers them.
         NSArray *plugins = WFGet(proxy, @"plugInKitPlugins");
         if (![plugins isKindOfClass:NSArray.class]) continue;
         for (id plugin in plugins) {
@@ -125,43 +130,234 @@ NSArray<NSDictionary<NSString *, id> *> *WFInstalledApps(void) {
         }
     }
 
-    return result;
+    return result.count > 0 ? result : nil;
 }
 
-static id WFProxyForIdentifier(NSString *identifier) {
-    id workspace = WFWorkspace();
-    if (workspace) {
-        SEL selector = NSSelectorFromString(@"applicationsWithBundleIdentifier:");
-        if ([workspace respondsToSelector:selector]) {
-            id apps = ((id (*)(id, SEL, id))objc_msgSend)(workspace, selector, identifier);
-            if ([apps isKindOfClass:NSArray.class] && [apps count] > 0) {
-                return [apps firstObject];
+#pragma mark - MobileInstallation
+
+typedef CFDictionaryRef (*WFMobileInstallationLookupFn)(CFDictionaryRef);
+
+static WFMobileInstallationLookupFn WFMobileInstallationLookup(void) {
+    static WFMobileInstallationLookupFn function = NULL;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        WFOpenFramework(@"/System/Library/PrivateFrameworks/MobileInstallation.framework/MobileInstallation");
+        void *symbol = dlsym(RTLD_DEFAULT, "MobileInstallationLookup");
+        if (!symbol) {
+            void *handle = dlopen("/System/Library/PrivateFrameworks/MobileInstallation.framework/MobileInstallation",
+                                  RTLD_NOW | RTLD_LOCAL);
+            if (handle) symbol = dlsym(handle, "MobileInstallationLookup");
+        }
+        function = (WFMobileInstallationLookupFn)symbol;
+    });
+    return function;
+}
+
+static NSArray *WFAppsFromMobileInstallation(void) {
+    WFMobileInstallationLookupFn lookup = WFMobileInstallationLookup();
+    if (!lookup) return nil;
+
+    NSDictionary *options = @{@"ApplicationType": @"Any"};
+    CFDictionaryRef reference = lookup((__bridge CFDictionaryRef)options);
+    if (!reference) reference = lookup((__bridge CFDictionaryRef)@{});
+    if (!reference) return nil;
+
+    NSDictionary *apps = (__bridge_transfer NSDictionary *)reference;
+    if (![apps isKindOfClass:NSDictionary.class] || apps.count == 0) return nil;
+
+    NSMutableArray<NSDictionary<NSString *, id> *> *result = [NSMutableArray array];
+    NSMutableSet<NSString *> *seen = [NSMutableSet set];
+
+    for (id key in apps) {
+        id value = apps[key];
+        if (![value isKindOfClass:NSDictionary.class]) continue;
+
+        NSString *identifier = WFString(((NSDictionary *)value)[@"CFBundleIdentifier"]);
+        if (identifier.length == 0) identifier = WFString(key);
+        if (identifier.length == 0) continue;
+        if ([seen containsObject:identifier]) continue;
+        [seen addObject:identifier];
+
+        NSString *bundlePath = WFString(((NSDictionary *)value)[@"Path"]);
+        if (bundlePath.length == 0) bundlePath = WFString(((NSDictionary *)value)[@"BundlePath"]);
+
+        NSString *dataPath = WFString(((NSDictionary *)value)[@"Container"]);
+        if (dataPath.length == 0) dataPath = WFString(((NSDictionary *)value)[@"DataContainer"]);
+        if (dataPath.length == 0) dataPath = WFString(((NSDictionary *)value)[@"ApplicationContainer"]);
+
+        NSString *name = WFString(((NSDictionary *)value)[@"CFBundleDisplayName"]);
+        if (name.length == 0) name = WFString(((NSDictionary *)value)[@"CFBundleName"]);
+
+        NSString *type = WFString(((NSDictionary *)value)[@"ApplicationType"]);
+
+        [result addObject:@{
+            @"identifier": identifier,
+            @"dataPath": dataPath ?: @"",
+            @"bundlePath": bundlePath ?: @"",
+            @"name": name ?: @"",
+            @"type": type ?: @"",
+        }];
+    }
+
+    return result.count > 0 ? result : nil;
+}
+
+#pragma mark - Public
+
+static NSString *WFLastSource = nil;
+static NSObject *WFSourceLock = nil;
+
+static void WFSetSource(NSString *source) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        WFSourceLock = [NSObject new];
+    });
+    @synchronized (WFSourceLock) {
+        WFLastSource = source;
+    }
+}
+
+NSArray<NSDictionary<NSString *, id> *> *WFInstalledApps(void) {
+    NSArray *apps = WFAppsFromLaunchServices();
+    if (apps.count > 0) {
+        WFSetSource(@"LaunchServices");
+        return apps;
+    }
+
+    apps = WFAppsFromMobileInstallation();
+    if (apps.count > 0) {
+        WFSetSource(@"MobileInstallation");
+        return apps;
+    }
+
+    WFSetSource(nil);
+    return nil;
+}
+
+NSString *WFInstalledAppsSource(void) {
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        WFSourceLock = [NSObject new];
+    });
+    @synchronized (WFSourceLock) {
+        return WFLastSource;
+    }
+}
+
+// LaunchServices' API is unavailable on iOS 27, but UIKit still resolves app
+// icons by bundle id. A fake bundle id returns iOS's generic placeholder, so
+// that image is fingerprinted and rejected. Technique from WQ Files.
+static NSData *WFIconFingerprint(UIImage *image) {
+    const size_t side = 12;
+    uint8_t pixels[12 * 12 * 4] = {0};
+    CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
+    CGContextRef context = CGBitmapContextCreate(pixels, side, side, 8, side * 4,
+                                                  space, (CGBitmapInfo)kCGImageAlphaPremultipliedLast);
+    CGColorSpaceRelease(space);
+    if (!context) return nil;
+    if (image.CGImage) CGContextDrawImage(context, CGRectMake(0, 0, side, side), image.CGImage);
+    CGContextRelease(context);
+    return [NSData dataWithBytes:pixels length:sizeof(pixels)];
+}
+
+static NSData *WFIconPNG(NSString *identifier) {
+    if (![UIImage respondsToSelector:@selector(_applicationIconImageForBundleIdentifier:format:scale:)]) {
+        return nil;
+    }
+
+    static NSData *placeholder;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        UIImage *none = [UIImage _applicationIconImageForBundleIdentifier:@"cz.kolbi.wqfiles.no-such-app"
+                                                                   format:2
+                                                                    scale:UIScreen.mainScreen.scale];
+        placeholder = WFIconFingerprint(none);
+    });
+
+    UIImage *raw = [UIImage _applicationIconImageForBundleIdentifier:identifier
+                                                              format:2
+                                                               scale:UIScreen.mainScreen.scale];
+    if (!raw || !raw.CGImage) return nil;
+
+    NSData *fingerprint = WFIconFingerprint(raw);
+    if (placeholder.length > 0 && fingerprint.length == placeholder.length) {
+        const uint8_t *a = fingerprint.bytes;
+        const uint8_t *b = placeholder.bytes;
+        unsigned long difference = 0;
+        for (NSUInteger index = 0; index < fingerprint.length; index++) {
+            difference += (unsigned long)abs((int)a[index] - (int)b[index]);
+        }
+        if (difference / fingerprint.length < 8) return nil;
+    }
+
+    CGFloat side = 40;
+    UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(side, side)];
+    UIImage *rounded = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
+        [[UIBezierPath bezierPathWithRoundedRect:CGRectMake(0, 0, side, side) cornerRadius:side * 0.225] addClip];
+        [raw drawInRect:CGRectMake(0, 0, side, side)];
+    }];
+    return rounded ? UIImagePNGRepresentation(rounded) : nil;
+}
+
+// Fallback for apps whose icon is only present in the bundle. Bundle
+// containers are usually closed, so this is best effort.
+NSData *WFBundleIconData(NSString *bundlePath) {
+    if (bundlePath.length == 0) return nil;
+    NSString *plistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
+    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
+    if (![info isKindOfClass:NSDictionary.class]) return nil;
+
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    id single = info[@"CFBundleIconFile"];
+    if ([single isKindOfClass:NSString.class] && [single length] > 0) {
+        [candidates addObject:single];
+    }
+    id files = info[@"CFBundleIconFiles"];
+    if ([files isKindOfClass:NSArray.class]) {
+        [candidates addObjectsFromArray:files];
+    }
+    NSDictionary *icons = info[@"CFBundleIcons"];
+    if ([icons isKindOfClass:NSDictionary.class]) {
+        NSDictionary *primary = icons[@"CFBundlePrimaryIcon"];
+        if ([primary isKindOfClass:NSDictionary.class]) {
+            id primaryFiles = primary[@"CFBundleIconFiles"];
+            if ([primaryFiles isKindOfClass:NSArray.class]) {
+                [candidates addObjectsFromArray:primaryFiles];
+            }
+            id iconName = primary[@"CFBundleIconName"];
+            if ([iconName isKindOfClass:NSString.class]) {
+                [candidates addObject:iconName];
             }
         }
     }
 
-    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
-    SEL proxySelector = NSSelectorFromString(@"applicationProxyForIdentifier:");
-    if (proxyClass && [proxyClass respondsToSelector:proxySelector]) {
-        return ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxySelector, identifier);
+    NSFileManager *manager = NSFileManager.defaultManager;
+    for (NSString *name in candidates) {
+        if (![name isKindOfClass:NSString.class] || name.length == 0) continue;
+        NSString *stem = [name stringByDeletingPathExtension];
+        for (NSString *suffix in @[@"@3x.png", @"@2x.png", @".png", @""]) {
+            NSString *file = [stem stringByAppendingString:suffix];
+            NSString *path = [bundlePath stringByAppendingPathComponent:file];
+            NSData *data = [NSData dataWithContentsOfFile:path];
+            if (data.length > 0) return data;
+        }
     }
+    (void)manager;
     return nil;
 }
 
 NSData *WFAppIconData(NSString *identifier) {
     if (identifier.length == 0) return nil;
-    id proxy = WFProxyForIdentifier(identifier);
-    if (!proxy) return nil;
-
-    SEL selector = NSSelectorFromString(@"iconDataForVariant:");
-    if (![proxy respondsToSelector:selector]) return nil;
-    for (NSNumber *variant in @[@2, @1, @0, @3]) {
-        id data = ((id (*)(id, SEL, int))objc_msgSend)(proxy, selector, variant.intValue);
-        if ([data isKindOfClass:NSData.class] && [data length] > 0) {
-            return data;
-        }
+    __block NSData *result = nil;
+    void (^work)(void) = ^{
+        result = WFIconPNG(identifier);
+    };
+    if (NSThread.isMainThread) {
+        work();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), work);
     }
-    return nil;
+    return result;
 }
 
 NSString *WFContainerPathForIdentifier(NSString *identifier) {

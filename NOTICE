@@ -33,6 +33,18 @@ pathleak_roots walks that window once and matches a path against several
 container parent prefixes. The path string is built with NSString instead of
 NSFileManager. The algorithm and error behaviour otherwise follow the original.
 
+WQ Files (name database and icon technique)
+Copyright (C) 2026 kolbicz
+https://github.com/kolbicz/WQFiles
+License: GPL-3.0-or-later
+
+Bridge/WQNames.m is derived from WQAccess.m in WQ Files. It reads and parses
+lsd's CSStore LaunchServices database for app names; the built-in app name
+table is copied from the same file. Bridge/WFInstalledApps.m resolves app
+icons through UIKit's private _applicationIconImageForBundleIdentifier method
+and rejects iOS's placeholder image using the fingerprint approach from
+WQ Files. The technique and parser were adapted, not copied verbatim.
+
 The SwiftUI application, engine, project files, and icon are original work and
 are released under the same GPL-3.0 terms. The full license text is in LICENSE.
 

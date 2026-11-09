@@ -189,6 +189,8 @@ struct DiagnosticsContent: View {
             detail.append("索引版本：\(version)")
         }
         let index = ContainerIndex.shared
+        let names = AppNames.shared
+        detail.append("应用名称库：\(names.loaded ? "\(names.databaseCount) 条" : "未加载")")
         detail.append("已安装应用：\(index.installedAppCount)（数据容器 \(index.installedPathCount)）")
         detail.append("应用列表：\(index.installedListAvailable ? "可用" : "不可用")")
         detail.append("上次同步：\(Format.date(index.lastReconciled))")

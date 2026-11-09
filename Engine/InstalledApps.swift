@@ -44,6 +44,10 @@ enum InstalledApps {
         return records
     }
 
+    static var source: String? {
+        WFInstalledAppsSource()
+    }
+
     static func containerPath(for identifier: String) -> String? {
         guard let path = WFContainerPathForIdentifier(identifier), !path.isEmpty else { return nil }
         return path

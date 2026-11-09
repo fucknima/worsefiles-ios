@@ -79,8 +79,8 @@ final class BrowserModel: ObservableObject {
         path = canonical
         if let spec = Roots.spec(for: canonical) {
             title = spec.title
-        } else if let known = Catalog.shared.displayName(for: canonical) {
-            title = known
+        } else if let label = Catalog.shared.label(for: canonical) {
+            title = Catalog.shared.appName(for: label) ?? AppNames.shared.name(for: label) ?? label
         } else {
             title = target.title ?? PathTool.name(of: canonical)
         }
@@ -255,8 +255,8 @@ final class BrowserModel: ObservableObject {
             title = spec.title
             return
         }
-        if let known = catalog.displayName(for: target) {
-            title = known
+        if let label = catalog.label(for: target) {
+            title = catalog.appName(for: label) ?? AppNames.shared.name(for: label) ?? label
             return
         }
         Task {
@@ -268,7 +268,7 @@ final class BrowserModel: ObservableObject {
             if let name = facts.displayName, !name.isEmpty {
                 catalog.setAppNames([identifier: name])
             }
-            title = catalog.appName(for: identifier) ?? identifier
+            title = catalog.appName(for: identifier) ?? AppNames.shared.name(for: identifier) ?? identifier
         }
     }
 
@@ -279,7 +279,7 @@ final class BrowserModel: ObservableObject {
                 copy.identifier = catalog.label(for: item.path)
             }
             if let identifier = copy.identifier {
-                copy.appName = catalog.appName(for: identifier)
+                copy.appName = catalog.appName(for: identifier) ?? AppNames.shared.name(for: identifier)
             }
             return copy
         }
@@ -298,12 +298,32 @@ final class BrowserModel: ObservableObject {
     // MARK: - Selection
 
     private func applyItems(_ newItems: [FSItem]) {
-        if newItems != items {
-            items = newItems
+        let decorated = decorate(newItems)
+        if decorated != items {
+            items = decorated
         }
-        let valid = Set(newItems.map { $0.path })
+        let valid = Set(decorated.map { $0.path })
         selected.formIntersection(valid)
         attachIcons()
+        prefetchIcons()
+    }
+
+    private func decorate(_ list: [FSItem]) -> [FSItem] {
+        list.map { item in
+            var copy = item
+            if copy.identifier == nil {
+                copy.identifier = catalog.label(for: copy.path)
+            }
+            if let identifier = copy.identifier {
+                copy.appName = catalog.appName(for: identifier) ?? AppNames.shared.name(for: identifier)
+            }
+            return copy
+        }
+    }
+
+    func namesUpdated() {
+        let decorated = decorate(items)
+        if decorated != items { items = decorated }
         prefetchIcons()
     }
 
@@ -593,6 +613,7 @@ final class BrowserModel: ObservableObject {
                         var updated = self.items
                         updated[position].identifier = identifier
                         updated[position].appName = self.catalog.appName(for: identifier)
+                            ?? AppNames.shared.name(for: identifier)
                         self.items = updated
                     }
                     AppIconStore.shared.prefetch([identifier])

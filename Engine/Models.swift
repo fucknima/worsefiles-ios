@@ -124,4 +124,7 @@ struct CatalogDisk: Codable {
     var installedAppDate: Date?
     // identifier -> localized app name, also from LaunchServices.
     var appNames: [String: String]?
+    // identifier -> .app bundle path, used for icon extraction when
+    // LaunchServices has no icon proxy.
+    var appBundlePaths: [String: String]?
 }

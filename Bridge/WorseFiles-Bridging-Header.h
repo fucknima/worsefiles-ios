@@ -12,5 +12,6 @@
 #import "WFAppGroups.h"
 #import "WFInstalledApps.h"
 #import "WFClone.h"
+#import "WQNames.h"
 
 #endif /* WorseFiles_Bridging_Header_h */

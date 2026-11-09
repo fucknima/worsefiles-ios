@@ -118,6 +118,29 @@ final class Catalog: ObservableObject {
     }
 
     @discardableResult
+    func appBundlePath(for identifier: String) -> String? {
+        disk.appBundlePaths?[identifier]
+    }
+
+    @discardableResult
+    func setAppBundlePaths(_ pairs: [String: String]) -> Bool {
+        var next = disk
+        var paths = next.appBundlePaths ?? [:]
+        var changed = false
+        for (identifier, path) in pairs {
+            guard !identifier.isEmpty, !path.isEmpty else { continue }
+            if paths[identifier] != path {
+                paths[identifier] = path
+                changed = true
+            }
+        }
+        guard changed else { return false }
+        next.appBundlePaths = paths
+        disk = next
+        store.save(next)
+        return true
+    }
+
     func setAppNames(_ pairs: [String: String]) -> Bool {
         var next = disk
         var names = next.appNames ?? [:]

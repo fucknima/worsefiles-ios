@@ -71,6 +71,9 @@ struct BrowserView: View {
         .onChange(of: icons.revision) { _, _ in
             model.attachIcons()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .worseFilesNamesUpdated)) { _ in
+            model.namesUpdated()
+        }
         .alert("操作失败", isPresented: errorBinding) {
             Button("好", role: .cancel) {}
         } message: {
@@ -672,8 +675,10 @@ struct BreadcrumbBar: View {
                 title = currentTitle
             } else if let spec = Roots.spec(for: target.path) {
                 title = spec.title
-            } else if let label = catalog.displayName(for: target.path), !label.isEmpty {
-                title = label
+            } else if let label = catalog.label(for: target.path), !label.isEmpty {
+                title = AppNames.shared.name(for: label)
+                    ?? catalog.appName(for: label)
+                    ?? label
             } else if let targetTitle = target.title, !targetTitle.isEmpty {
                 title = targetTitle
             } else {
