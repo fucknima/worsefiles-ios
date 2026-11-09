@@ -483,6 +483,14 @@ struct BackupsView: View {
         }
     }
 
+    private func detail(_ record: BackupRecord) -> String {
+        var text = "\(Format.date(record.createdAt)) · \(record.mode.title) · \(Format.bytes(record.bytes))"
+        if let failures = record.failures, failures > 0 {
+            text += " · \(failures) 项失败"
+        }
+        return text
+    }
+
     private func row(_ record: BackupRecord) -> some View {
         HStack(spacing: 10) {
             if let identifier = record.containerIdentifier,
@@ -506,7 +514,7 @@ struct BackupsView: View {
                 Text(record.name)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Text("\(Format.date(record.createdAt)) · \(record.mode.title) · \(Format.bytes(record.bytes))")
+                Text(detail(record))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

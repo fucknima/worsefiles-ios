@@ -45,6 +45,7 @@ struct BackupRecord: Codable, Identifiable, Equatable, Sendable {
     var mode: BackupMode
     var bytes: Int64
     var files: Int
+    var failures: Int?
 }
 
 struct BackupManifest: Codable {
@@ -184,10 +185,13 @@ final class BackupStore: ObservableObject {
 
     @discardableResult
     func remove(_ record: BackupRecord) -> Bool {
-        do {
-            try manager.removeItem(at: BackupPaths.folder(for: record.id))
-        } catch {
-            return false
+        let folder = BackupPaths.folder(for: record.id)
+        if manager.fileExists(atPath: folder.path) {
+            do {
+                try manager.removeItem(at: folder)
+            } catch {
+                return false
+            }
         }
         records.removeAll { $0.id == record.id }
         save()
@@ -378,7 +382,8 @@ final class BackupEngine: @unchecked Sendable {
                                   containerRelative: relative,
                                   mode: mode,
                                   bytes: bytes,
-                                  files: files)
+                                  files: files,
+                                  failures: errors.isEmpty ? nil : errors.count)
         if !errors.isEmpty {
             Log.info("backup \(id) finished with \(errors.count) copy errors")
         }
@@ -417,6 +422,9 @@ final class BackupEngine: @unchecked Sendable {
         }
 
         let relativeRoot = record.containerRelative.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard !relativeRoot.contains("..") else {
+            throw BackupError.unsafePath(relativeRoot)
+        }
         var destinationRoot = target
         if !relativeRoot.isEmpty {
             destinationRoot = PathTool.canonical(target + "/" + relativeRoot)
@@ -424,6 +432,9 @@ final class BackupEngine: @unchecked Sendable {
         guard PathTool.isDescendant(destinationRoot, of: target) else {
             throw BackupError.unsafePath(destinationRoot)
         }
+        try? manager.createDirectory(atPath: destinationRoot,
+                                     withIntermediateDirectories: true,
+                                     attributes: nil)
 
         let lease = acquire(target)
         defer {
@@ -617,7 +628,8 @@ enum BackupSupport {
 
     static func restoreTarget(for record: BackupRecord) -> String? {
         if let identifier = record.containerIdentifier,
-           let path = Catalog.shared.path(forIdentifier: identifier) {
+           let path = Catalog.shared.path(forIdentifier: identifier),
+           FileManager.default.fileExists(atPath: path) {
             return path
         }
         if FileManager.default.fileExists(atPath: record.sourcePath) {
