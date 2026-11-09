@@ -70,7 +70,7 @@ final class BackupCreateModel: ObservableObject {
                 self.busy = false
                 self.progress = nil
                 UIApplication.shared.isIdleTimerDisabled = false
-                self.alert = .error(error.localizedDescription)
+                self.errorMessage = error.localizedDescription
             }
         }
     }
@@ -201,6 +201,10 @@ struct BackupCreateSheet: View {
         }
     }
 
+    private var errorBinding: Binding<Bool> {
+        Binding(get: { model.errorMessage != nil },
+                set: { if !$0 { model.errorMessage = nil } })
+    }
 }
 
 struct BackupExportFile: Identifiable {
