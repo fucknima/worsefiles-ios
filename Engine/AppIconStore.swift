@@ -104,10 +104,6 @@ final class AppIconStore: ObservableObject {
             candidate = String(candidate[..<dot])
             guard candidate.contains(".") else { break }
             if let data = WFAppIconData(candidate) { return data }
-            if let path = Catalog.shared.appBundlePath(for: candidate),
-               let data = bundleIcon(path) {
-                return data
-            }
         }
         return nil
     }
