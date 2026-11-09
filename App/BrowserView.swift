@@ -13,6 +13,7 @@ struct BrowserView: View {
     @EnvironmentObject private var app: AppModel
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var index = ContainerIndex.shared
+    @ObservedObject private var icons = AppIconStore.shared
     @StateObject private var model: BrowserModel
 
     init(target: BrowseTarget) {
@@ -65,6 +66,9 @@ struct BrowserView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .worseFilesIndexUpdated)) { _ in
             model.reloadAfterIndexUpdate()
+        }
+        .onChange(of: icons.revision) { _, _ in
+            model.attachIcons()
         }
         .alert("操作失败", isPresented: errorBinding) {
             Button("好", role: .cancel) {}
@@ -564,8 +568,8 @@ struct BrowserView: View {
 
     private func detail(for item: FSItem) -> String {
         if item.isDirectory {
-            if let identifier = item.identifier, identifier != item.name {
-                return "\(item.name) · 容器"
+            if let identifier = item.identifier {
+                return "\(identifier) · 容器"
             }
             if let modified = item.modified {
                 return "文件夹 · \(Format.date(modified))"
@@ -644,7 +648,7 @@ struct BreadcrumbBar: View {
                 title = currentTitle
             } else if let spec = Roots.spec(for: target.path) {
                 title = spec.title
-            } else if let label = catalog.label(for: target.path), !label.isEmpty {
+            } else if let label = catalog.displayName(for: target.path), !label.isEmpty {
                 title = label
             } else if let targetTitle = target.title, !targetTitle.isEmpty {
                 title = targetTitle

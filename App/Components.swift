@@ -5,20 +5,29 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct FileGlyph: View {
     let item: FSItem
 
     var body: some View {
-        let style = FileGlyph.style(for: item)
-        ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(style.color.opacity(0.15))
+        if let data = item.iconData, let image = UIImage(data: data) {
+            Image(uiImage: image)
+                .resizable()
+                .scaledToFit()
                 .frame(width: 36, height: 36)
-            Image(systemName: style.symbol)
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundStyle(style.color)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        } else {
+            let style = FileGlyph.style(for: item)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(style.color.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                Image(systemName: style.symbol)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(style.color)
+            }
         }
     }
 

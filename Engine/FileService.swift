@@ -113,6 +113,18 @@ final class FileService: @unchecked Sendable {
         }
     }
 
+    func facts(for path: String, ensureAccess: Bool = true) -> ContainerFacts? {
+        queue.sync {
+            let key = PathTool.canonical(path)
+            if ensureAccess && !nativelyAccessible(key) {
+                if (try? broker.access(key)) == nil {
+                    _ = try? broker.access(PathTool.parent(of: key))
+                }
+            }
+            return ContainerMetadata.facts(atPath: key)
+        }
+    }
+
     static func nameProblem(_ raw: String) -> String? {
         let name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if name.isEmpty { return "名称不能为空" }

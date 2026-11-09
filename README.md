@@ -30,6 +30,8 @@
 - 应用数据/扩展/守护进程/系统组的父目录不可列举时，按 inode 扫描发现容器；一次扫描按文件系统分组遍历，同时匹配所有容器根路径，不会为每个入口重复全扫。
 - App 组和 iOS 27 系统路径优先直接列举父目录，失败时自动回退到 inode 扫描。
 - 读取容器的 `com.apple.containermanager.identifier` 与 `.com.apple.mobile_container_manager.metadata.plist`，把 UUID 行显示成 bundle identifier；扫描后默认自动解析，也可在菜单手动重试或停止。
+- 容器行显示 App 名称与图标：名称来自 LaunchServices 的 localizedName，图标来自 iconDataForVariant 并缓存到 Application Support；插件图标回退到父 App。
+- 维护 → 清理缓存：安全模式只删 Library/Caches 与 tmp，标准模式再加日志、Saved Application State、SplashBoard；先按 App 汇总可释放空间，确认后删除并重建目录。不含 Documents、App Group、系统容器。
 - 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。
 - 多选、全选、目录搜索、隐藏文件开关、按名称/日期/大小/类型排序、文件夹优先。
 - 原生 NavigationStack 推入/返回动画和边缘右滑；面包屑从当前导航链开始，点任意一级直接弹回该层。

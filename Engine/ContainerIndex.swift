@@ -112,6 +112,7 @@ final class ContainerIndex: ObservableObject {
 
         var added = 0
         var livePathCount = 0
+        var namesChanged = false
 
         if hasList {
             let pairs: [(String, String)] = apps.compactMap { app in
@@ -166,6 +167,15 @@ final class ContainerIndex: ObservableObject {
             }
             catalog.setInstalledAppIDs(apps.map { $0.identifier })
 
+            var names: [String: String] = [:]
+            for app in apps {
+                if let name = app.name, !name.isEmpty {
+                    names[app.identifier] = name
+                }
+            }
+            namesChanged = catalog.setAppNames(names)
+            AppIconStore.shared.prefetch(apps.map { $0.identifier })
+
             var knownPaths = Set(livePathMap.keys)
             knownPaths.formUnion(resolved.map { $0.0 })
             livePathCount = knownPaths.count
@@ -188,11 +198,11 @@ final class ContainerIndex: ObservableObject {
             Log.info("reconcile +\(added) -\(removed)")
         }
 
-        if added > 0 || removed > 0 {
+        if added > 0 || removed > 0 || namesChanged {
             NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
         }
 
-        if added > 0 || removed > 0 {
+        if added > 0 || removed > 0 || namesChanged {
             Log.info("reconcile took \(Int(Date().timeIntervalSince(started) * 1000))ms")
         }
 

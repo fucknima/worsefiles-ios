@@ -82,14 +82,17 @@ final class Catalog: ObservableObject {
         let key = PathTool.canonical(root)
         guard let record = disk.scans[key] else { return [] }
         return record.paths.map { path in
-            FSItem(path: path,
-                   name: PathTool.name(of: path),
-                   isDirectory: true,
-                   isSymbolicLink: false,
-                   isHidden: false,
-                   size: 0,
-                   modified: nil,
-                   identifier: disk.labels[path])
+            let identifier = disk.labels[path]
+            let name = identifier.flatMap { appName(for: $0) }
+            return FSItem(path: path,
+                          name: PathTool.name(of: path),
+                          isDirectory: true,
+                          isSymbolicLink: false,
+                          isHidden: false,
+                          size: 0,
+                          modified: nil,
+                          identifier: identifier,
+                          appName: name)
         }
     }
 
@@ -99,6 +102,34 @@ final class Catalog: ObservableObject {
 
     func setLabel(_ label: String, for path: String) {
         setLabels([path: label])
+    }
+
+    func appName(for identifier: String) -> String? {
+        disk.appNames?[identifier]
+    }
+
+    func displayName(for path: String) -> String? {
+        guard let identifier = label(for: path) else { return nil }
+        return appName(for: identifier) ?? identifier
+    }
+
+    @discardableResult
+    func setAppNames(_ pairs: [String: String]) -> Bool {
+        var next = disk
+        var names = next.appNames ?? [:]
+        var changed = false
+        for (identifier, name) in pairs {
+            guard !identifier.isEmpty, !name.isEmpty else { continue }
+            if names[identifier] != name {
+                names[identifier] = name
+                changed = true
+            }
+        }
+        guard changed else { return false }
+        next.appNames = names
+        disk = next
+        store.save(next)
+        return true
     }
 
     func setLabels(_ pairs: [String: String]) {

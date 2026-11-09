@@ -22,6 +22,7 @@ struct RootView: View {
             List {
                 environmentSection
                 containersSection
+                maintenanceSection
                 ownSection
                 if !app.favorites.isEmpty { favoritesSection }
                 if !app.recents.isEmpty { recentsSection }
@@ -123,6 +124,22 @@ struct RootView: View {
             Text("容器")
         } footer: {
             Text("应用数据、扩展和守护进程需要首次 inode 扫描，结果会缓存。App 组与 iOS 27 的系统路径优先直接列举。")
+        }
+    }
+
+    private var maintenanceSection: some View {
+        Section {
+            NavigationLink {
+                CleanupView()
+            } label: {
+                RootRow(symbol: "trash.circle.fill",
+                        tint: .orange,
+                        title: "清理缓存",
+                        subtitle: "扫描各 App 的 Caches、tmp 与日志",
+                        detail: nil)
+            }
+        } header: {
+            Text("维护")
         }
     }
 

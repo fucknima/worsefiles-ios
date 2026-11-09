@@ -66,7 +66,7 @@ final class SandboxBroker: @unchecked Sendable {
     private let limit = 6
 
     @discardableResult
-    func access(_ path: String) throws -> Int64 {
+    func access(_ path: String, quiet: Bool = false) throws -> Int64 {
         let key = PathTool.canonical(path)
         return try queue.sync {
             if let existing = handles[key] {
@@ -84,15 +84,17 @@ final class SandboxBroker: @unchecked Sendable {
             }
             handles[key] = handle
             order.append(key)
-            Log.info("access \(key) → \(handle)")
+            if !quiet {
+                Log.info("access \(key) → \(handle)")
+            }
             return handle
         }
     }
 
-    func release(_ path: String) {
+    func release(_ path: String, quiet: Bool = false) {
         let key = PathTool.canonical(path)
         queue.sync {
-            releaseLocked(key)
+            releaseLocked(key, quiet: quiet)
         }
     }
 
@@ -128,10 +130,12 @@ final class SandboxBroker: @unchecked Sendable {
         }
     }
 
-    private func releaseLocked(_ key: String) {
+    private func releaseLocked(_ key: String, quiet: Bool = false) {
         order.removeAll { $0 == key }
         guard let handle = handles.removeValue(forKey: key) else { return }
         worse_query_release(handle)
-        Log.info("release \(key)")
+        if !quiet {
+            Log.info("release \(key)")
+        }
     }
 }

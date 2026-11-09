@@ -14,12 +14,18 @@ struct FSItem: Identifiable, Hashable {
     let size: Int64
     let modified: Date?
     var identifier: String?
+    var appName: String? = nil
+    var iconData: Data? = nil
 
     var id: String { path }
 
     var url: URL { URL(fileURLWithPath: path) }
 
-    var displayName: String { identifier?.isEmpty == false ? identifier! : name }
+    var displayName: String {
+        if let appName, !appName.isEmpty { return appName }
+        if let identifier, !identifier.isEmpty { return identifier }
+        return name
+    }
 }
 
 enum SortKey: String, CaseIterable, Identifiable {
@@ -116,4 +122,6 @@ struct CatalogDisk: Codable {
     // Bundle identifiers seen at the last LaunchServices reconcile.
     var installedAppIDs: [String]?
     var installedAppDate: Date?
+    // identifier -> localized app name, also from LaunchServices.
+    var appNames: [String: String]?
 }

@@ -79,6 +79,9 @@ NSArray<NSDictionary<NSString *, id> *> *WFInstalledApps(void) {
         NSURL *bundleURL = WFGet(proxy, @"bundleURL");
         NSString *bundlePath = [bundleURL isKindOfClass:NSURL.class] ? bundleURL.path : nil;
         NSString *name = WFGet(proxy, @"localizedName");
+        if (![name isKindOfClass:NSString.class] || name.length == 0) {
+            name = WFGet(proxy, @"itemName");
+        }
         if (![name isKindOfClass:NSString.class]) name = nil;
         NSString *type = WFGet(proxy, @"applicationType");
         if (![type isKindOfClass:NSString.class]) type = nil;
@@ -106,18 +109,59 @@ NSArray<NSDictionary<NSString *, id> *> *WFInstalledApps(void) {
 
             NSURL *pluginData = WFGet(plugin, @"dataContainerURL");
             if (![pluginData isKindOfClass:NSURL.class] || pluginData.path.length == 0) continue;
+            NSString *pluginName = WFGet(plugin, @"localizedName");
+            if (![pluginName isKindOfClass:NSString.class] || pluginName.length == 0) {
+                pluginName = WFGet(plugin, @"itemName");
+            }
+            if (![pluginName isKindOfClass:NSString.class]) pluginName = nil;
             [seen addObject:pluginID];
             [result addObject:@{
                 @"identifier": pluginID,
                 @"dataPath": pluginData.path,
                 @"bundlePath": @"",
-                @"name": @"",
+                @"name": pluginName ?: @"",
                 @"type": @"plugin",
             }];
         }
     }
 
     return result;
+}
+
+static id WFProxyForIdentifier(NSString *identifier) {
+    id workspace = WFWorkspace();
+    if (workspace) {
+        SEL selector = NSSelectorFromString(@"applicationsWithBundleIdentifier:");
+        if ([workspace respondsToSelector:selector]) {
+            id apps = ((id (*)(id, SEL, id))objc_msgSend)(workspace, selector, identifier);
+            if ([apps isKindOfClass:NSArray.class] && [apps count] > 0) {
+                return [apps firstObject];
+            }
+        }
+    }
+
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL proxySelector = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    if (proxyClass && [proxyClass respondsToSelector:proxySelector]) {
+        return ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxySelector, identifier);
+    }
+    return nil;
+}
+
+NSData *WFAppIconData(NSString *identifier) {
+    if (identifier.length == 0) return nil;
+    id proxy = WFProxyForIdentifier(identifier);
+    if (!proxy) return nil;
+
+    SEL selector = NSSelectorFromString(@"iconDataForVariant:");
+    if (![proxy respondsToSelector:selector]) return nil;
+    for (NSNumber *variant in @[@2, @1, @0, @3]) {
+        id data = ((id (*)(id, SEL, int))objc_msgSend)(proxy, selector, variant.intValue);
+        if ([data isKindOfClass:NSData.class] && [data length] > 0) {
+            return data;
+        }
+    }
+    return nil;
 }
 
 NSString *WFContainerPathForIdentifier(NSString *identifier) {

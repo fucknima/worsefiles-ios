@@ -79,7 +79,7 @@ final class BrowserModel: ObservableObject {
         path = canonical
         if let spec = Roots.spec(for: canonical) {
             title = spec.title
-        } else if let known = Catalog.shared.label(for: canonical) {
+        } else if let known = Catalog.shared.displayName(for: canonical) {
             title = known
         } else {
             title = target.title ?? PathTool.name(of: canonical)
@@ -96,6 +96,7 @@ final class BrowserModel: ObservableObject {
         return items.filter {
             $0.name.localizedCaseInsensitiveContains(needle)
                 || ($0.identifier?.localizedCaseInsensitiveContains(needle) ?? false)
+                || ($0.appName?.localizedCaseInsensitiveContains(needle) ?? false)
         }
     }
 
@@ -254,25 +255,32 @@ final class BrowserModel: ObservableObject {
             title = spec.title
             return
         }
-        if let known = catalog.label(for: target) {
+        if let known = catalog.displayName(for: target) {
             title = known
             return
         }
         Task {
-            let identifier = await Task.detached(priority: .utility) {
-                FileService.shared.identifier(for: target)
+            let facts = await Task.detached(priority: .utility) {
+                FileService.shared.facts(for: target)
             }.value
-            guard path == target, let identifier, !identifier.isEmpty else { return }
+            guard path == target, let facts, let identifier = facts.identifier, !identifier.isEmpty else { return }
             catalog.setLabel(identifier, for: target)
-            title = identifier
+            if let name = facts.displayName, !name.isEmpty {
+                catalog.setAppNames([identifier: name])
+            }
+            title = catalog.appName(for: identifier) ?? identifier
         }
     }
 
     private func enrich(_ listed: [FSItem]) -> [FSItem] {
         listed.map { item in
-            guard item.identifier == nil else { return item }
             var copy = item
-            copy.identifier = catalog.label(for: item.path)
+            if copy.identifier == nil {
+                copy.identifier = catalog.label(for: item.path)
+            }
+            if let identifier = copy.identifier {
+                copy.appName = catalog.appName(for: identifier)
+            }
             return copy
         }
     }
@@ -295,6 +303,28 @@ final class BrowserModel: ObservableObject {
         }
         let valid = Set(newItems.map { $0.path })
         selected.formIntersection(valid)
+        attachIcons()
+        prefetchIcons()
+    }
+
+    func attachIcons() {
+        var updated = items
+        var changed = false
+        for index in updated.indices {
+            guard let identifier = updated[index].identifier else { continue }
+            let data = AppIconStore.shared.cachedIcon(for: identifier)
+            if updated[index].iconData != data {
+                updated[index].iconData = data
+                changed = true
+            }
+        }
+        if changed { items = updated }
+    }
+
+    private func prefetchIcons() {
+        let identifiers = Set(items.compactMap { $0.identifier })
+        guard !identifiers.isEmpty else { return }
+        AppIconStore.shared.prefetch(Array(identifiers))
     }
 
     func toggleSelectionMode() {
@@ -550,17 +580,22 @@ final class BrowserModel: ObservableObject {
             for item in targets {
                 if token.isCancelled { break }
                 let itemPath = item.path
-                let identifier = await Task.detached(priority: .utility) {
-                    FileService.shared.identifier(for: itemPath)
+                let facts = await Task.detached(priority: .utility) {
+                    FileService.shared.facts(for: itemPath)
                 }.value
                 guard self.labelToken === token else { return }
-                if let identifier, !identifier.isEmpty {
+                if let facts, let identifier = facts.identifier, !identifier.isEmpty {
                     self.catalog.setLabel(identifier, for: item.path)
+                    if let name = facts.displayName, !name.isEmpty {
+                        self.catalog.setAppNames([identifier: name])
+                    }
                     if let position = self.items.firstIndex(where: { $0.path == item.path }) {
                         var updated = self.items
                         updated[position].identifier = identifier
+                        updated[position].appName = self.catalog.appName(for: identifier)
                         self.items = updated
                     }
+                    AppIconStore.shared.prefetch([identifier])
                 }
                 index += 1
                 self.labelProgress = LabelProgress(done: index, total: targets.count)
