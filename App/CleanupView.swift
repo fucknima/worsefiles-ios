@@ -6,6 +6,20 @@
 import SwiftUI
 import UIKit
 
+enum CleanupAlert: Identifiable {
+    case confirm(Int, Int64)
+    case report(CleanupReport)
+    case error(String)
+
+    var id: String {
+        switch self {
+        case .confirm: return "confirm"
+        case .report: return "report"
+        case .error: return "error"
+        }
+    }
+}
+
 @MainActor
 final class CleanupModel: ObservableObject {
     enum Phase: Equatable {
@@ -23,10 +37,8 @@ final class CleanupModel: ObservableObject {
     }
     @Published private(set) var phase: Phase = .idle
     @Published private(set) var plan: CleanupPlan?
-    @Published var report: CleanupReport?
     @Published private(set) var progress: CleanupProgress?
-    @Published var confirmClean = false
-    @Published var errorMessage: String?
+    @Published var alert: CleanupAlert?
 
     private var token: CancelToken?
     private var lastProgressAt = Date.distantPast
@@ -74,7 +86,6 @@ final class CleanupModel: ObservableObject {
 
     func clean() {
         guard phase == .idle, let plan, plan.totalBytes > 0 else { return }
-        confirmClean = false
         phase = .cleaning
         progress = CleanupProgress(phase: "清理", done: 0, total: plan.targets.count, current: nil)
         let token = CancelToken()
@@ -91,7 +102,7 @@ final class CleanupModel: ObservableObject {
 
             guard self.token === token else { return }
             self.token = nil
-            self.report = result
+            self.alert = .report(result)
             self.plan = nil
             self.phase = .idle
             self.progress = nil
@@ -193,7 +204,9 @@ struct CleanupView: View {
 
                     Section {
                         Button(role: .destructive) {
-                            model.confirmClean = true
+                            if let plan = model.plan {
+                                model.alert = .confirm(plan.targets.count, plan.totalBytes)
+                            }
                         } label: {
                             Label("清理 \(Format.bytes(plan.totalBytes))", systemImage: "trash")
                         }
@@ -229,21 +242,22 @@ struct CleanupView: View {
         .task {
             if model.plan == nil { model.scan() }
         }
-        .alert("确认清理", isPresented: $model.confirmClean) {
-            Button("取消", role: .cancel) {}
-            Button("清理", role: .destructive) { model.clean() }
-        } message: {
-            Text("将删除 \(model.plan?.targets.count ?? 0) 个 App 的缓存，约 \(Format.bytes(model.plan?.totalBytes ?? 0))。无法撤销。")
-        }
-        .alert("清理完成", isPresented: reportBinding) {
-            Button("好", role: .cancel) {}
-        } message: {
-            Text(model.report?.summary ?? "")
-        }
-        .alert("操作失败", isPresented: errorBinding) {
-            Button("好", role: .cancel) {}
-        } message: {
-            Text(model.errorMessage ?? "")
+        .alert(item: $model.alert) { value in
+            switch value {
+            case .confirm(let count, let bytes):
+                return Alert(title: Text("确认清理"),
+                             message: Text("将删除 \(count) 个 App 的缓存，约 \(Format.bytes(bytes))。无法撤销。"),
+                             primaryButton: .destructive(Text("清理")) { model.clean() },
+                             secondaryButton: .cancel(Text("取消")))
+            case .report(let report):
+                return Alert(title: Text("清理完成"),
+                             message: Text(report.summary),
+                             dismissButton: .default(Text("好")))
+            case .error(let message):
+                return Alert(title: Text("操作失败"),
+                             message: Text(message),
+                             dismissButton: .default(Text("好")))
+            }
         }
     }
 
@@ -285,13 +299,4 @@ struct CleanupView: View {
         }
     }
 
-    private var reportBinding: Binding<Bool> {
-        Binding(get: { model.report != nil },
-                set: { if !$0 { model.report = nil } })
-    }
-
-    private var errorBinding: Binding<Bool> {
-        Binding(get: { model.errorMessage != nil },
-                set: { if !$0 { model.errorMessage = nil } })
-    }
 }

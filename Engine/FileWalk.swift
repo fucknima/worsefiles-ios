@@ -18,6 +18,7 @@ struct WalkEntry {
     let allocated: Int64
     let modified: Date?
     let permissions: mode_t
+    let symlinkTarget: String?
 }
 
 enum FileWalk {
@@ -39,7 +40,7 @@ enum FileWalk {
     static func walk(root: String,
                      options: Options = Options(),
                      token: CancelToken? = nil,
-                     visit: (WalkEntry) -> Void) throws -> Int {
+                     visit: (WalkEntry) throws -> Void) throws -> Int {
         let base = PathTool.canonical(root)
         let manager = FileManager.default
         var isDirectory: ObjCBool = false
@@ -78,6 +79,9 @@ enum FileWalk {
                 continue
             }
 
+            let linkTarget = isLink
+                ? try? manager.destinationOfSymbolicLink(atPath: path)
+                : nil
             let entry = WalkEntry(path: path,
                                   relative: relative,
                                   isDirectory: isDir,
@@ -85,8 +89,9 @@ enum FileWalk {
                                   size: Int64(values?.fileSize ?? 0),
                                   allocated: Int64(values?.totalFileAllocatedSize ?? 0),
                                   modified: values?.contentModificationDate,
-                                  permissions: 0)
-            visit(entry)
+                                  permissions: 0,
+                                  symlinkTarget: linkTarget)
+            try visit(entry)
             count += 1
 
             if isDir && isLink {

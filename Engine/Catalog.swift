@@ -104,6 +104,10 @@ final class Catalog: ObservableObject {
         setLabels([path: label])
     }
 
+    func path(forIdentifier identifier: String) -> String? {
+        disk.labels.first { $0.value == identifier }?.key
+    }
+
     func appName(for identifier: String) -> String? {
         disk.appNames?[identifier]
     }

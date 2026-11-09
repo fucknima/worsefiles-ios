@@ -15,6 +15,7 @@ struct BrowserView: View {
     @ObservedObject private var index = ContainerIndex.shared
     @ObservedObject private var icons = AppIconStore.shared
     @StateObject private var model: BrowserModel
+    @State private var backupRequest: BackupRequest?
 
     init(target: BrowseTarget) {
         _model = StateObject(wrappedValue: BrowserModel(target: target))
@@ -88,6 +89,14 @@ struct BrowserView: View {
         .sheet(item: $model.sheet) { payload in
             sheetContent(payload.content)
                 .environmentObject(app)
+        }
+        .sheet(item: $backupRequest) { request in
+            NavigationStack {
+                BackupCreateSheet(request: request) { record in
+                    app.flash("已备份 \(record.name)")
+                }
+            }
+            .environmentObject(app)
         }
         .overlay {
             if let busy = model.busy {
@@ -296,6 +305,14 @@ struct BrowserView: View {
             Label("分享", systemImage: "square.and.arrow.up")
         }
 
+        if item.isDirectory {
+            Button {
+                backupRequest = BackupSupport.request(path: item.path, title: item.displayName)
+            } label: {
+                Label("备份此文件夹", systemImage: "externaldrive.badge.timemachine")
+            }
+        }
+
         Divider()
 
         if item.isDirectory {
@@ -332,6 +349,13 @@ struct BrowserView: View {
             model.presentImporter()
         } label: {
             Label("导入文件", systemImage: "square.and.arrow.down")
+        }
+        if !model.isRootContainer {
+            Button {
+                backupRequest = BackupSupport.request(path: model.path, title: model.title)
+            } label: {
+                Label("备份当前文件夹", systemImage: "externaldrive.badge.timemachine")
+            }
         }
         if let clipboard = app.clipboard {
             Button {

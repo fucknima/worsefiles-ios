@@ -138,6 +138,15 @@ struct RootView: View {
                         subtitle: "扫描各 App 的 Caches、tmp 与日志",
                         detail: nil)
             }
+            NavigationLink {
+                BackupsView()
+            } label: {
+                RootRow(symbol: "externaldrive.badge.timemachine",
+                        tint: .indigo,
+                        title: "备份与恢复",
+                        subtitle: "把容器保存到 Documents，可导出 ZIP 或恢复",
+                        detail: nil)
+            }
         } header: {
             Text("维护")
         }

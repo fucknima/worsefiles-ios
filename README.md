@@ -32,6 +32,8 @@
 - 读取容器的 `com.apple.containermanager.identifier` 与 `.com.apple.mobile_container_manager.metadata.plist`，把 UUID 行显示成 bundle identifier；扫描后默认自动解析，也可在菜单手动重试或停止。
 - 容器行显示 App 名称与图标：名称来自 LaunchServices 的 localizedName，图标来自 iconDataForVariant 并缓存到 Application Support；插件图标回退到父 App。
 - 维护 → 清理缓存：安全模式只删 Library/Caches 与 tmp，标准模式再加日志、Saved Application State、SplashBoard；先按 App 汇总可释放空间，确认后删除并重建目录。不含 Documents、App Group、系统容器。
+- 备份与恢复：容器或其中任意文件夹可备份到 Documents/Backups；manifest 记录容器 identifier 与容器内相对路径，App 重装换 UUID 后仍能找回新容器。默认跳过缓存，文件优先用 clonefile 克隆，失败回退 copyfile；恢复为同名覆盖。
+- 备份可在列表里导出 ZIP（NSFileCoordinator 打包）后分享；备份放在应用自己的 Documents，删除 App 会一起消失。
 - 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。
 - 多选、全选、目录搜索、隐藏文件开关、按名称/日期/大小/类型排序、文件夹优先。
 - 原生 NavigationStack 推入/返回动画和边缘右滑；面包屑从当前导航链开始，点任意一级直接弹回该层。
@@ -97,6 +99,8 @@ open WorseFiles.xcodeproj
 - inode 可能被复用；应用容器由 LaunchServices 列表兜底，插件与守护进程容器仍可能落在水位下，极端情况需要清除扫描结果再全扫。
 - 已存在的缓存不会每次全量重扫；前台同步只补应用容器并校验失效项，完整的容器发现仍靠增量扫描或清除后全扫。
 - 卸载后容器消失，下一次前台同步会用 lstat 把它从索引和名称缓存里剔除；SystemGroup 等无法 stat 的路径只在确认 ENOENT 时移除。
+- 恢复需要目标 App 仍然安装；卸载后只剩备份，重装后按 bundle identifier 找回新容器路径再恢复。
+- 清理与备份都不修改 App Group、系统容器；清理会重建被删的 Caches/tmp 目录，恢复不删除目标里备份之外的文件。
 
 ## 原理
 
