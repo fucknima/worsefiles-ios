@@ -12,6 +12,12 @@
 #import <dlfcn.h>
 #import <UIKit/UIKit.h>
 
+@interface UIImage (WorseFilesPrivate)
++ (UIImage *)_applicationIconImageForBundleIdentifier:(NSString *)bundleID
+                                               format:(int)format
+                                                scale:(CGFloat)scale;
+@end
+
 static void WFOpenFramework(NSString *path) {
     static NSMutableSet<NSString *> *opened = nil;
     static dispatch_once_t once;
