@@ -33,9 +33,11 @@ final class AppIconStore: ObservableObject {
             directory = nil
             return
         }
-        let url = support
-            .appendingPathComponent("WorseFiles", isDirectory: true)
-            .appendingPathComponent("icons", isDirectory: true)
+        let base = support.appendingPathComponent("WorseFiles", isDirectory: true)
+        // v2: format-2 only. Old files may hold alternate-format glyphs,
+        // which is why some rows showed another app's icon.
+        try? manager.removeItem(at: base.appendingPathComponent("icons", isDirectory: true))
+        let url = base.appendingPathComponent("icons-v2", isDirectory: true)
         try? manager.createDirectory(at: url, withIntermediateDirectories: true)
         directory = url
     }
