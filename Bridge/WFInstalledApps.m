@@ -341,6 +341,51 @@ static NSData *WFProxyIconPNG(NSString *identifier) {
     return nil;
 }
 
+// Fallback for apps whose icon is only present in the bundle. Bundle
+// containers are usually closed, so this is best effort.
+NSData *WFBundleIconData(NSString *bundlePath) {
+    if (bundlePath.length == 0) return nil;
+    NSString *plistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
+    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
+    if (![info isKindOfClass:NSDictionary.class]) return nil;
+
+    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
+    id single = info[@"CFBundleIconFile"];
+    if ([single isKindOfClass:NSString.class] && [single length] > 0) {
+        [candidates addObject:single];
+    }
+    id files = info[@"CFBundleIconFiles"];
+    if ([files isKindOfClass:NSArray.class]) {
+        [candidates addObjectsFromArray:files];
+    }
+    NSDictionary *icons = info[@"CFBundleIcons"];
+    if ([icons isKindOfClass:NSDictionary.class]) {
+        NSDictionary *primary = icons[@"CFBundlePrimaryIcon"];
+        if ([primary isKindOfClass:NSDictionary.class]) {
+            id primaryFiles = primary[@"CFBundleIconFiles"];
+            if ([primaryFiles isKindOfClass:NSArray.class]) {
+                [candidates addObjectsFromArray:primaryFiles];
+            }
+            id iconName = primary[@"CFBundleIconName"];
+            if ([iconName isKindOfClass:NSString.class]) {
+                [candidates addObject:iconName];
+            }
+        }
+    }
+
+    for (NSString *name in candidates) {
+        if (![name isKindOfClass:NSString.class] || name.length == 0) continue;
+        NSString *stem = [name stringByDeletingPathExtension];
+        for (NSString *suffix in @[@"@3x.png", @"@2x.png", @".png", @""]) {
+            NSString *file = [stem stringByAppendingString:suffix];
+            NSString *path = [bundlePath stringByAppendingPathComponent:file];
+            NSData *data = [NSData dataWithContentsOfFile:path];
+            if (data.length > 0) return data;
+        }
+    }
+    return nil;
+}
+
 NSData *WFAppIconData(NSString *identifier) {
     if (identifier.length == 0) return nil;
     __block NSData *result = nil;
