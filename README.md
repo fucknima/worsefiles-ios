@@ -30,8 +30,8 @@
 - 应用数据/扩展/守护进程/系统组的父目录不可列举时，按 inode 扫描发现容器；一次扫描按文件系统分组遍历，同时匹配所有容器根路径，不会为每个入口重复全扫。
 - App 组和 iOS 27 系统路径优先直接列举父目录，失败时自动回退到 inode 扫描。
 - 读取容器的 `com.apple.containermanager.identifier` 与 `.com.apple.mobile_container_manager.metadata.plist`，把 UUID 行显示成 bundle identifier；扫描后默认自动解析，也可在菜单手动重试或停止。
-- 容器行显示 App 名称与图标：iOS 27 的 LaunchServices API 不可用，名称改为解析 lsd 的 CSStore 数据库（内置 Apple App 名称表兜底），图标用 UIKit 私有方法按 bundle id 取图并缓存到 Application Support；插件回退到父 App，没有图标的服务显示占位图标。
-- 维护 → 清理缓存：安全模式只删 Library/Caches 与 tmp，标准模式再加日志、Saved Application State、SplashBoard；先按 App 汇总可释放空间，确认后删除并重建目录。不含 Documents、App Group、系统容器。
+- 容器行显示 App 名称与图标：iOS 27 的 LaunchServices API 不可用，名称解析 lsd 的 CSStore 数据库，再尝试 App bundle 里的 zh-Hans InfoPlist.strings，内置 Apple App 名称表用中文兜底。图标先试 UIKit 私有方法，再试 LSApplicationProxy 图标，再读 Bundle 图标，最后用按 bundle id 关键词生成的占位图标；缓存到 Application Support。
+- 维护 → 清理缓存：安全模式只删 Library/Caches 与 tmp，标准模式再加日志、Saved Application State、SplashBoard；先按 App 汇总可释放空间，支持逐个勾选、全选/全不选、只看 50 MB/200 MB 以上，确认后删除并重建目录。不含 Documents、App Group、系统容器。
 - 备份与恢复：容器或其中任意文件夹可备份到 Documents/Backups；manifest 记录容器 identifier 与容器内相对路径，App 重装换 UUID 后仍能找回新容器。默认跳过缓存，文件优先用 clonefile 克隆，失败回退 copyfile；恢复为同名覆盖。
 - 备份可在列表里导出 ZIP（NSFileCoordinator 打包）后分享；备份放在应用自己的 Documents，删除 App 会一起消失。
 - 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。

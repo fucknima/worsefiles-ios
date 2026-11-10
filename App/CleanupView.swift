@@ -39,12 +39,38 @@ final class CleanupModel: ObservableObject {
     @Published private(set) var plan: CleanupPlan?
     @Published private(set) var progress: CleanupProgress?
     @Published var alert: CleanupAlert?
+    @Published var selected: Set<String> = []
 
     private var token: CancelToken?
     private var lastProgressAt = Date.distantPast
 
     var isBusy: Bool { phase != .idle }
-    var canClean: Bool { !isBusy && (plan?.totalBytes ?? 0) > 0 }
+    var selectedTargets: [CleanupTarget] {
+        (plan?.targets ?? []).filter { selected.contains($0.id) }
+    }
+    var selectedBytes: Int64 { selectedTargets.reduce(0) { $0 + $1.bytes } }
+    var canClean: Bool { !isBusy && selectedBytes > 0 }
+
+    func toggle(_ target: CleanupTarget) {
+        if selected.contains(target.id) {
+            selected.remove(target.id)
+        } else {
+            selected.insert(target.id)
+        }
+    }
+
+    func selectAll() {
+        selected = Set((plan?.targets ?? []).map { $0.id })
+    }
+
+    func selectNone() {
+        selected.removeAll()
+    }
+
+    func selectLarge(_ megabytes: Int64) {
+        let threshold = megabytes * 1024 * 1024
+        selected = Set((plan?.targets ?? []).filter { $0.bytes >= threshold }.map { $0.id })
+    }
 
     func scan() {
         guard phase == .idle else { return }
@@ -79,21 +105,30 @@ final class CleanupModel: ObservableObject {
             guard self.token === token else { return }
             self.token = nil
             self.plan = result
+            self.selected = Set(result.targets.map { $0.id })
             self.phase = .idle
             self.progress = nil
         }
     }
 
     func clean() {
-        guard phase == .idle, let plan, plan.totalBytes > 0 else { return }
+        guard phase == .idle, let plan else { return }
+        let targets = selectedTargets
+        guard !targets.isEmpty else { return }
+        let filtered = CleanupPlan(targets: targets,
+                                   totalBytes: targets.reduce(0) { $0 + $1.bytes },
+                                   totalFiles: targets.reduce(0) { $0 + $1.files },
+                                   scanned: plan.scanned,
+                                   failed: plan.failed,
+                                   date: plan.date)
         phase = .cleaning
-        progress = CleanupProgress(phase: "清理", done: 0, total: plan.targets.count, current: nil)
+        progress = CleanupProgress(phase: "清理", done: 0, total: targets.count, current: nil)
         let token = CancelToken()
         self.token = token
 
         Task {
             let result = await Task.detached(priority: .userInitiated) {
-                CleanupEngine.shared.clean(plan: plan, token: token) { value in
+                CleanupEngine.shared.clean(plan: filtered, token: token) { value in
                     Task { @MainActor [weak self] in
                         self?.receive(value)
                     }
@@ -104,6 +139,7 @@ final class CleanupModel: ObservableObject {
             self.token = nil
             self.alert = .report(result)
             self.plan = nil
+            self.selected.removeAll()
             self.phase = .idle
             self.progress = nil
         }
@@ -188,27 +224,30 @@ struct CleanupView: View {
                 } else {
                     Section {
                         ForEach(plan.targets) { target in
-                            row(target)
+                            Button {
+                                model.toggle(target)
+                            } label: {
+                                row(target)
+                            }
+                            .buttonStyle(.plain)
                         }
                     } header: {
                         HStack {
                             Text("可清理")
                             Spacer()
-                            Text("\(plan.targets.count) 个 App")
+                            Text("已选 \(model.selectedTargets.count)/\(plan.targets.count)")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                     } footer: {
-                        Text("共 \(Format.bytes(plan.totalBytes))，约 \(plan.totalFiles) 个文件。清理只删上述目录的内容，目录本身会重建。")
+                        Text("已选 \(Format.bytes(model.selectedBytes))，共 \(plan.targets.count) 个 App。清理只删上述目录的内容，目录本身会重建。")
                     }
 
                     Section {
                         Button(role: .destructive) {
-                            if let plan = model.plan {
-                                model.alert = .confirm(plan.targets.count, plan.totalBytes)
-                            }
+                            model.alert = .confirm(model.selectedTargets.count, model.selectedBytes)
                         } label: {
-                            Label("清理 \(Format.bytes(plan.totalBytes))", systemImage: "trash")
+                            Label("清理已选 \(Format.bytes(model.selectedBytes))", systemImage: "trash")
                         }
                         .disabled(!model.canClean)
                     } footer: {
@@ -237,6 +276,19 @@ struct CleanupView: View {
                         model.cancel()
                     }
                 }
+            } else if model.plan != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button("全选") { model.selectAll() }
+                        Button("全不选") { model.selectNone() }
+                        Divider()
+                        Button("仅大于 50 MB") { model.selectLarge(50) }
+                        Button("仅大于 200 MB") { model.selectLarge(200) }
+                    } label: {
+                        Image(systemName: "checklist")
+                    }
+                    .accessibilityLabel("选择清理项")
+                }
             }
         }
         .task {
@@ -263,6 +315,10 @@ struct CleanupView: View {
 
     private func row(_ target: CleanupTarget) -> some View {
         HStack(spacing: 10) {
+            Image(systemName: model.selected.contains(target.id) ? "checkmark.circle.fill" : "circle")
+                .font(.system(size: 19))
+                .foregroundStyle(model.selected.contains(target.id) ? Color.accentColor : Color.secondary.opacity(0.55))
+
             if let identifier = target.identifier,
                let data = icons.cachedIcon(for: identifier),
                let image = UIImage(data: data) {

@@ -52,4 +52,9 @@ enum InstalledApps {
         guard let path = WFContainerPathForIdentifier(identifier), !path.isEmpty else { return nil }
         return path
     }
+
+    static func bundlePath(for identifier: String) -> String? {
+        guard let path = WFBundlePathForIdentifier(identifier), !path.isEmpty else { return nil }
+        return path
+    }
 }

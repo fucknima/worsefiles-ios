@@ -21,6 +21,13 @@ FOUNDATION_EXPORT NSArray<NSDictionary<NSString *, id> *> * _Nullable WFInstalle
 // Last-resort lookup for an app whose proxy has no dataContainerURL.
 FOUNDATION_EXPORT NSString * _Nullable WFContainerPathForIdentifier(NSString *identifier);
 
+// Bundle container path, used for localized names and icon files.
+FOUNDATION_EXPORT NSString * _Nullable WFBundlePathForIdentifier(NSString *identifier);
+
+// Localized CFBundleDisplayName/CFBundleName from zh-Hans InfoPlist.strings.
+// The caller must hold a sandbox extension for the bundle or its parent.
+FOUNDATION_EXPORT NSString * _Nullable WFLocalizedNameAtBundlePath(NSString *bundlePath);
+
 // Which source produced the last WFInstalledApps() answer.
 FOUNDATION_EXPORT NSString * _Nullable WFInstalledAppsSource(void);
 
@@ -28,8 +35,11 @@ FOUNDATION_EXPORT NSString * _Nullable WFInstalledAppsSource(void);
 // The caller must hold a sandbox extension for the bundle or its container.
 FOUNDATION_EXPORT NSData * _Nullable WFBundleIconData(NSString *bundlePath);
 
-// PNG icon for an installed app. Returns nil when LaunchServices has no proxy
-// or no icon variant; callers fall back to the parent app's icon.
+// PNG icon for an installed app. Tries UIKit then the LaunchServices proxy;
+// callers fall back to the parent app's icon.
 FOUNDATION_EXPORT NSData * _Nullable WFAppIconData(NSString *identifier);
+
+// Human-readable icon resolution details for the diagnostics screen.
+FOUNDATION_EXPORT NSString *WFIconReport(NSString *identifier);
 
 NS_ASSUME_NONNULL_END

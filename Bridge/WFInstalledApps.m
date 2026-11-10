@@ -266,36 +266,8 @@ static NSData *WFIconFingerprint(UIImage *image) {
     return [NSData dataWithBytes:pixels length:sizeof(pixels)];
 }
 
-static NSData *WFIconPNG(NSString *identifier) {
-    if (![UIImage respondsToSelector:@selector(_applicationIconImageForBundleIdentifier:format:scale:)]) {
-        return nil;
-    }
-
-    static NSData *placeholder;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        UIImage *none = [UIImage _applicationIconImageForBundleIdentifier:@"cz.kolbi.wqfiles.no-such-app"
-                                                                   format:2
-                                                                    scale:UIScreen.mainScreen.scale];
-        placeholder = WFIconFingerprint(none);
-    });
-
-    UIImage *raw = [UIImage _applicationIconImageForBundleIdentifier:identifier
-                                                              format:2
-                                                               scale:UIScreen.mainScreen.scale];
+static NSData *WFIconPNGFromImage(UIImage *raw) {
     if (!raw || !raw.CGImage) return nil;
-
-    NSData *fingerprint = WFIconFingerprint(raw);
-    if (placeholder.length > 0 && fingerprint.length == placeholder.length) {
-        const uint8_t *a = fingerprint.bytes;
-        const uint8_t *b = placeholder.bytes;
-        unsigned long difference = 0;
-        for (NSUInteger index = 0; index < fingerprint.length; index++) {
-            difference += (unsigned long)abs((int)a[index] - (int)b[index]);
-        }
-        if (difference / fingerprint.length < 8) return nil;
-    }
-
     CGFloat side = 40;
     UIGraphicsImageRenderer *renderer = [[UIGraphicsImageRenderer alloc] initWithSize:CGSizeMake(side, side)];
     UIImage *rounded = [renderer imageWithActions:^(UIGraphicsImageRendererContext *context) {
@@ -305,50 +277,67 @@ static NSData *WFIconPNG(NSString *identifier) {
     return rounded ? UIImagePNGRepresentation(rounded) : nil;
 }
 
-// Fallback for apps whose icon is only present in the bundle. Bundle
-// containers are usually closed, so this is best effort.
-NSData *WFBundleIconData(NSString *bundlePath) {
-    if (bundlePath.length == 0) return nil;
-    NSString *plistPath = [bundlePath stringByAppendingPathComponent:@"Info.plist"];
-    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
-    if (![info isKindOfClass:NSDictionary.class]) return nil;
+static UIImage *WFRawUIKitIcon(NSString *identifier, int variant) {
+    if (![UIImage respondsToSelector:@selector(_applicationIconImageForBundleIdentifier:format:scale:)]) {
+        return nil;
+    }
+    return [UIImage _applicationIconImageForBundleIdentifier:identifier
+                                                      format:variant
+                                                       scale:UIScreen.mainScreen.scale];
+}
 
-    NSMutableArray<NSString *> *candidates = [NSMutableArray array];
-    id single = info[@"CFBundleIconFile"];
-    if ([single isKindOfClass:NSString.class] && [single length] > 0) {
-        [candidates addObject:single];
+static BOOL WFIconMatchesPlaceholder(UIImage *raw, NSData *placeholder) {
+    if (!raw || !raw.CGImage) return YES;
+    NSData *fingerprint = WFIconFingerprint(raw);
+    if (placeholder.length == 0 || fingerprint.length != placeholder.length) return NO;
+    const uint8_t *a = fingerprint.bytes;
+    const uint8_t *b = placeholder.bytes;
+    unsigned long difference = 0;
+    for (NSUInteger index = 0; index < fingerprint.length; index++) {
+        difference += (unsigned long)abs((int)a[index] - (int)b[index]);
     }
-    id files = info[@"CFBundleIconFiles"];
-    if ([files isKindOfClass:NSArray.class]) {
-        [candidates addObjectsFromArray:files];
-    }
-    NSDictionary *icons = info[@"CFBundleIcons"];
-    if ([icons isKindOfClass:NSDictionary.class]) {
-        NSDictionary *primary = icons[@"CFBundlePrimaryIcon"];
-        if ([primary isKindOfClass:NSDictionary.class]) {
-            id primaryFiles = primary[@"CFBundleIconFiles"];
-            if ([primaryFiles isKindOfClass:NSArray.class]) {
-                [candidates addObjectsFromArray:primaryFiles];
-            }
-            id iconName = primary[@"CFBundleIconName"];
-            if ([iconName isKindOfClass:NSString.class]) {
-                [candidates addObject:iconName];
-            }
-        }
-    }
+    return difference / fingerprint.length < 8;
+}
 
-    NSFileManager *manager = NSFileManager.defaultManager;
-    for (NSString *name in candidates) {
-        if (![name isKindOfClass:NSString.class] || name.length == 0) continue;
-        NSString *stem = [name stringByDeletingPathExtension];
-        for (NSString *suffix in @[@"@3x.png", @"@2x.png", @".png", @""]) {
-            NSString *file = [stem stringByAppendingString:suffix];
-            NSString *path = [bundlePath stringByAppendingPathComponent:file];
-            NSData *data = [NSData dataWithContentsOfFile:path];
-            if (data.length > 0) return data;
+static NSData *WFUIKitIconPNG(NSString *identifier) {
+    static NSMutableDictionary<NSNumber *, NSData *> *placeholders;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        placeholders = [NSMutableDictionary dictionary];
+    });
+
+    for (NSNumber *variant in @[@2, @0, @1, @3]) {
+        NSData *placeholder = placeholders[variant];
+        if (!placeholder) {
+            UIImage *none = WFRawUIKitIcon(@"cz.kolbi.wqfiles.no-such-app", variant.intValue);
+            placeholder = WFIconFingerprint(none) ?: [NSData data];
+            placeholders[variant] = placeholder;
         }
+        UIImage *raw = WFRawUIKitIcon(identifier, variant.intValue);
+        if (!raw || !raw.CGImage) continue;
+        if (WFIconMatchesPlaceholder(raw, placeholder)) continue;
+        NSData *png = WFIconPNGFromImage(raw);
+        if (png.length > 0) return png;
     }
-    (void)manager;
+    return nil;
+}
+
+static NSData *WFProxyIconPNG(NSString *identifier) {
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL proxySelector = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    if (!proxyClass || ![proxyClass respondsToSelector:proxySelector]) return nil;
+    id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, proxySelector, identifier);
+    if (!proxy) return nil;
+
+    SEL iconSelector = NSSelectorFromString(@"iconDataForVariant:");
+    if (![proxy respondsToSelector:iconSelector]) return nil;
+    for (NSNumber *variant in @[@2, @0, @1, @3]) {
+        id data = ((id (*)(id, SEL, int))objc_msgSend)(proxy, iconSelector, variant.intValue);
+        if (![data isKindOfClass:NSData.class] || [data length] == 0) continue;
+        UIImage *image = [UIImage imageWithData:data];
+        NSData *png = WFIconPNGFromImage(image);
+        if (png.length > 0) return png;
+    }
     return nil;
 }
 
@@ -356,7 +345,8 @@ NSData *WFAppIconData(NSString *identifier) {
     if (identifier.length == 0) return nil;
     __block NSData *result = nil;
     void (^work)(void) = ^{
-        result = WFIconPNG(identifier);
+        result = WFUIKitIconPNG(identifier);
+        if (!result) result = WFProxyIconPNG(identifier);
     };
     if (NSThread.isMainThread) {
         work();
@@ -366,13 +356,32 @@ NSData *WFAppIconData(NSString *identifier) {
     return result;
 }
 
-NSString *WFContainerPathForIdentifier(NSString *identifier) {
-    if (identifier.length == 0) return nil;
+NSString *WFIconReport(NSString *identifier) {
+    if (identifier.length == 0) return @"no identifier";
+    __block NSString *report = nil;
+    void (^work)(void) = ^{
+        BOOL responds = [UIImage respondsToSelector:@selector(_applicationIconImageForBundleIdentifier:format:scale:)];
+        UIImage *raw = WFRawUIKitIcon(identifier, 2);
+        NSData *uikit = WFUIKitIconPNG(identifier);
+        NSData *proxy = WFProxyIconPNG(identifier);
+        report = [NSString stringWithFormat:@"api=%@ raw=%@ uikit=%lu proxy=%lu",
+                  responds ? @"yes" : @"no",
+                  raw ? [NSString stringWithFormat:@"%.0fx%.0f", raw.size.width, raw.size.height] : @"nil",
+                  (unsigned long)uikit.length,
+                  (unsigned long)proxy.length];
+    };
+    if (NSThread.isMainThread) {
+        work();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), work);
+    }
+    return report ?: @"nil";
+}
 
+static NSString *WFMCMContainerPath(NSString *identifier, NSArray<NSString *> *classNames) {
     WFOpenFramework(@"/System/Library/PrivateFrameworks/MobileContainerManager.framework/MobileContainerManager");
-
     SEL selector = NSSelectorFromString(@"containerWithIdentifier:createIfNecessary:existed:error:");
-    for (NSString *className in @[@"MCMAppContainer", @"MCMAppDataContainer"]) {
+    for (NSString *className in classNames) {
         Class cls = NSClassFromString(className);
         if (!cls || ![cls respondsToSelector:selector]) continue;
 
@@ -388,6 +397,51 @@ NSString *WFContainerPathForIdentifier(NSString *identifier) {
         if ([url isKindOfClass:NSURL.class] && url.path.length > 0) {
             return url.path;
         }
+    }
+    return nil;
+}
+
+NSString *WFContainerPathForIdentifier(NSString *identifier) {
+    if (identifier.length == 0) return nil;
+    NSString *path = WFMCMContainerPath(identifier, @[@"MCMAppDataContainer"]);
+    if (!path) path = WFMCMContainerPath(identifier, @[@"MCMAppContainer"]);
+    if ([path containsString:@"/Bundle/"]) return nil;
+    return path;
+}
+
+NSString *WFBundlePathForIdentifier(NSString *identifier) {
+    if (identifier.length == 0) return nil;
+    NSString *path = WFMCMContainerPath(identifier, @[@"MCMAppContainer"]);
+    if (!path || ![path containsString:@"/Bundle/"]) return nil;
+    return path;
+}
+
+NSString *WFLocalizedNameAtBundlePath(NSString *bundlePath) {
+    if (bundlePath.length == 0) return nil;
+    NSFileManager *manager = NSFileManager.defaultManager;
+    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:
+                          [bundlePath stringByAppendingPathComponent:@"Info.plist"]];
+    if (![info isKindOfClass:NSDictionary.class]) return nil;
+
+    NSArray<NSString *> *languages = @[@"zh-Hans", @"zh-Hant", @"zh_CN", @"zh-Hans-CN"];
+    for (NSString *language in languages) {
+        for (NSString *file in @[@"InfoPlist.strings", @"Localizable.strings"]) {
+            NSString *path = [[bundlePath stringByAppendingPathComponent:
+                               [language stringByAppendingPathExtension:@"lproj"]]
+                              stringByAppendingPathComponent:file];
+            if (![manager fileExistsAtPath:path]) continue;
+            NSDictionary *strings = [NSDictionary dictionaryWithContentsOfFile:path];
+            if (![strings isKindOfClass:NSDictionary.class]) continue;
+            for (NSString *key in @[@"CFBundleDisplayName", @"CFBundleName"]) {
+                id value = strings[key];
+                if ([value isKindOfClass:NSString.class] && [value length] > 0) return value;
+            }
+        }
+    }
+
+    for (NSString *key in @[@"CFBundleDisplayName", @"CFBundleName"]) {
+        id value = info[key];
+        if ([value isKindOfClass:NSString.class] && [value length] > 0) return value;
     }
     return nil;
 }

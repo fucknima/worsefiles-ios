@@ -96,6 +96,10 @@ final class AppIconStore: ObservableObject {
     nonisolated private static func fetchIcon(_ identifier: String, bundlePath: String?) -> Data? {
         if let data = WFAppIconData(identifier) { return data }
         if let bundlePath, let data = bundleIcon(bundlePath) { return data }
+        if let path = InstalledApps.bundlePath(for: identifier),
+           let data = bundleIcon(path) {
+            return data
+        }
 
         // A plugin or daemon often has no proxy of its own. Walk up the
         // reverse-DNS identifier until an installed app answers.

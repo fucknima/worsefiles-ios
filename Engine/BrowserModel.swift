@@ -279,7 +279,7 @@ final class BrowserModel: ObservableObject {
                 copy.identifier = catalog.label(for: item.path)
             }
             if let identifier = copy.identifier {
-                copy.appName = catalog.appName(for: identifier) ?? AppNames.shared.name(for: identifier)
+                copy.appName = AppNames.shared.name(for: identifier) ?? catalog.appName(for: identifier)
             }
             return copy
         }
@@ -306,6 +306,7 @@ final class BrowserModel: ObservableObject {
         selected.formIntersection(valid)
         attachIcons()
         prefetchIcons()
+        AppNames.shared.enrich(items.compactMap { $0.identifier })
     }
 
     private func decorate(_ list: [FSItem]) -> [FSItem] {
@@ -315,7 +316,7 @@ final class BrowserModel: ObservableObject {
                 copy.identifier = catalog.label(for: copy.path)
             }
             if let identifier = copy.identifier {
-                copy.appName = catalog.appName(for: identifier) ?? AppNames.shared.name(for: identifier)
+                copy.appName = AppNames.shared.name(for: identifier) ?? catalog.appName(for: identifier)
             }
             return copy
         }
@@ -612,8 +613,8 @@ final class BrowserModel: ObservableObject {
                     if let position = self.items.firstIndex(where: { $0.path == item.path }) {
                         var updated = self.items
                         updated[position].identifier = identifier
-                        updated[position].appName = self.catalog.appName(for: identifier)
-                            ?? AppNames.shared.name(for: identifier)
+                        updated[position].appName = AppNames.shared.name(for: identifier)
+                            ?? self.catalog.appName(for: identifier)
                         self.items = updated
                     }
                     AppIconStore.shared.prefetch([identifier])
@@ -626,6 +627,7 @@ final class BrowserModel: ObservableObject {
             self.labelTask = nil
             self.labelToken = nil
             self.items = Sorter.sorted(self.items, order: self.sortOrder)
+            AppNames.shared.enrich(self.items.compactMap { $0.identifier })
             guard manual else { return }
             if token.isCancelled {
                 app?.flash("已停止识别")

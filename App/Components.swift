@@ -18,6 +18,16 @@ struct FileGlyph: View {
                 .scaledToFit()
                 .frame(width: 36, height: 36)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        } else if let identifier = item.identifier, item.isDirectory {
+            let style = ServiceGlyph.style(for: identifier)
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(style.color.gradient)
+                    .frame(width: 36, height: 36)
+                Image(systemName: style.symbol)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white)
+            }
         } else {
             let style = FileGlyph.style(for: item)
             ZStack {
@@ -51,6 +61,64 @@ struct FileGlyph: View {
         if type.conforms(to: .pdf) { return ("doc.richtext.fill", .red) }
         if type.conforms(to: .text) { return ("doc.text.fill", .gray) }
         return ("doc.fill", .gray)
+    }
+}
+
+enum ServiceGlyph {
+    private static let rules: [(words: [String], symbol: String, color: Color)] = [
+        (["emoji"], "face.smiling.inverse", .orange),
+        (["keyboard", "inputui", "textinput", "dictation"], "keyboard.fill", .gray),
+        (["airdrop", "sharing", "sharesheet"], "antenna.radiowaves.left.and.right", .blue),
+        (["widget", "chrono"], "square.grid.2x2.fill", .blue),
+        (["screenshot", "screencapture"], "camera.viewfinder", .indigo),
+        (["poster", "wallpaper"], "photo.on.rectangle.angled", .purple),
+        (["siri", "assistant"], "waveform", .indigo),
+        (["camera"], "camera.fill", .gray),
+        (["photo"], "photo.fill", .orange),
+        (["music", "audio", "shazam"], "music.note", .pink),
+        (["headphone", "airpod", "bluetooth"], "headphones", .gray),
+        (["hearing"], "ear.fill", .blue),
+        (["weather"], "cloud.sun.fill", .teal),
+        (["location", "maps", "navigation"], "location.fill", .blue),
+        (["health", "fitness", "workout"], "heart.fill", .red),
+        (["pay", "wallet", "passbook", "cash", "finance"], "creditcard.fill", .green),
+        (["mail"], "envelope.fill", .blue),
+        (["message", "sms", "imessage"], "message.fill", .green),
+        (["facetime", "video"], "video.fill", .green),
+        (["phone", "call", "telephony"], "phone.fill", .green),
+        (["notification", "bulletin"], "bell.fill", .red),
+        (["shortcut", "workflow", "intent"], "square.on.square", .indigo),
+        (["safari", "web"], "safari.fill", .blue),
+        (["news", "stocks"], "newspaper.fill", .red),
+        (["calendar", "event"], "calendar", .red),
+        (["note", "paper"], "note.text", .orange),
+        (["reminder"], "checklist", .blue),
+        (["game"], "gamecontroller.fill", .purple),
+        (["auth", "account", "sso", "password", "keychain", "tcc", "privacy"], "lock.fill", .gray),
+        (["print"], "printer.fill", .gray),
+        (["clarity", "accessib"], "accessibility", .blue),
+        (["home"], "house.fill", .orange),
+        (["findmy", "fmd", "fmip"], "location.circle.fill", .green),
+        (["carplay", "carradio", "cartrip"], "car.fill", .gray),
+        (["tvremote", "tvsetup"], "tv.fill", .gray),
+        (["book"], "book.fill", .orange),
+        (["podcast"], "mic.fill", .purple),
+        (["spotlight", "search"], "magnifyingglass", .gray),
+        (["diagnostic", "logging", "crash", "analytics"], "stethoscope", .gray),
+        (["font"], "textformat", .gray),
+        (["translate"], "character.bubble.fill", .blue),
+        (["file", "document", "cloud"], "folder.fill", .blue),
+        (["setup", "buddy", "onboarding"], "gearshape.2.fill", .gray),
+    ]
+
+    static func style(for identifier: String) -> (symbol: String, color: Color) {
+        let key = identifier.lowercased()
+        for rule in rules {
+            if rule.words.contains(where: { key.contains($0) }) {
+                return (rule.symbol, rule.color)
+            }
+        }
+        return ("shippingbox.fill", .teal)
     }
 }
 
