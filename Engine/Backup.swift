@@ -762,6 +762,7 @@ enum BackupSupport {
 
     private static func xattrLookup(_ identifier: String) -> String? {
         let broker = SandboxBroker.shared
+        let manager = FileManager.default
         for root in [Roots.dataApplication, Roots.pluginKit] {
             var lease: String?
             if (try? broker.access(root.path, quiet: true)) != nil {
