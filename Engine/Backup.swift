@@ -49,6 +49,7 @@ struct BackupRecord: Codable, Identifiable, Equatable, Sendable {
 }
 
 struct BackupManifest: Codable {
+    static let currentVersion = 1
     var version: Int
     var record: BackupRecord
 }
@@ -84,11 +85,15 @@ struct BackupRestoreReport {
     let files: Int
     let skipped: Int
     let errors: [String]
+    let snapshot: BackupRecord?
 
     var summary: String {
         var text = "已恢复 \(files) 个文件，约 \(Format.bytes(bytes))。"
         if skipped > 0 { text += "跳过 \(skipped) 项。" }
         if !errors.isEmpty { text += "\(errors.count) 项失败。" }
+        if let snapshot {
+            text += "\n恢复前已快照到「\(snapshot.name)」。"
+        }
         return text
     }
 }
@@ -99,6 +104,8 @@ enum BackupError: LocalizedError {
     case notDirectory(String)
     case copyFailed(String)
     case unsafePath(String)
+    case unsupportedVersion(Int)
+    case manifestMismatch
 
     var errorDescription: String? {
         switch self {
@@ -107,6 +114,8 @@ enum BackupError: LocalizedError {
         case .notDirectory(let path): return "不是文件夹：\(path)"
         case .copyFailed(let path): return "复制失败：\(path)"
         case .unsafePath(let path): return "路径不在容器内，已拒绝：\(path)"
+        case .unsupportedVersion(let version): return "备份格式版本 \(version) 高于当前应用支持的 \(BackupManifest.currentVersion)，请更新应用。"
+        case .manifestMismatch: return "备份清单与记录不匹配，已拒绝恢复。"
         }
     }
 }
@@ -388,7 +397,7 @@ final class BackupEngine: @unchecked Sendable {
             Log.info("backup \(id) finished with \(errors.count) copy errors")
         }
 
-        let manifest = BackupManifest(version: 1, record: record)
+        let manifest = BackupManifest(version: BackupManifest.currentVersion, record: record)
         do {
             let data = try Self.encoder.encode(manifest)
             try data.write(to: folder.appendingPathComponent("manifest.json"), options: .atomic)
@@ -405,6 +414,7 @@ final class BackupEngine: @unchecked Sendable {
 
     func restore(record: BackupRecord,
                  targetContainer: String,
+                 snapshot: Bool = false,
                  token: CancelToken,
                  progress: @escaping (BackupProgress) -> Void) throws -> BackupRestoreReport {
         let folder = BackupPaths.folder(for: record.id)
@@ -420,6 +430,7 @@ final class BackupEngine: @unchecked Sendable {
               isDirectory.boolValue else {
             throw BackupError.missingDestination(target)
         }
+        try validateManifest(record: record, folder: folder)
 
         let relativeRoot = record.containerRelative.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         guard !relativeRoot.contains("..") else {
@@ -432,6 +443,15 @@ final class BackupEngine: @unchecked Sendable {
         guard PathTool.isDescendant(destinationRoot, of: target) else {
             throw BackupError.unsafePath(destinationRoot)
         }
+
+        var snapshotRecord: BackupRecord?
+        if snapshot {
+            snapshotRecord = try snapshotIfNeeded(record: record,
+                                                  destinationRoot: destinationRoot,
+                                                  token: token,
+                                                  progress: progress)
+        }
+
         try? manager.createDirectory(atPath: destinationRoot,
                                      withIntermediateDirectories: true,
                                      attributes: nil)
@@ -529,7 +549,52 @@ final class BackupEngine: @unchecked Sendable {
         return BackupRestoreReport(bytes: bytes,
                                    files: files,
                                    skipped: skipped,
-                                   errors: errors)
+                                   errors: errors,
+                                   snapshot: snapshotRecord)
+    }
+
+    // Restore overwrites files in place, so a failed or partial restore can
+    // destroy the previous state. Snapshot the destination first; clonefile
+    // makes this cheap on the same volume. A snapshot failure aborts restore.
+    private func snapshotIfNeeded(record: BackupRecord,
+                                  destinationRoot: String,
+                                  token: CancelToken,
+                                  progress: @escaping (BackupProgress) -> Void) throws -> BackupRecord? {
+        // Restoring a snapshot should not create another snapshot of the
+        // restore target, or every recovery would add a new copy.
+        guard !record.name.hasPrefix("恢复前快照") else { return nil }
+        var isDirectory: ObjCBool = false
+        guard manager.fileExists(atPath: destinationRoot, isDirectory: &isDirectory),
+              isDirectory.boolValue else { return nil }
+        let contents = (try? manager.contentsOfDirectory(atPath: destinationRoot)) ?? []
+        guard !contents.isEmpty else { return nil }
+
+        let request = BackupRequest(sourcePath: destinationRoot,
+                                    title: "恢复前快照 \(record.name)",
+                                    containerIdentifier: record.containerIdentifier,
+                                    containerName: record.containerName,
+                                    containerRelative: record.containerRelative)
+        return try create(request: request, mode: .full, token: token) { value in
+            progress(BackupProgress(phase: "恢复前快照",
+                                    bytes: value.bytes,
+                                    files: value.files,
+                                    totalBytes: 0,
+                                    current: value.current))
+        }
+    }
+
+    private func validateManifest(record: BackupRecord, folder: URL) throws {
+        let manifestURL = folder.appendingPathComponent("manifest.json")
+        guard let data = try? Data(contentsOf: manifestURL),
+              let manifest = try? Self.decoder.decode(BackupManifest.self, from: data) else {
+            throw BackupError.missingSource(manifestURL.path)
+        }
+        guard manifest.version <= BackupManifest.currentVersion else {
+            throw BackupError.unsupportedVersion(manifest.version)
+        }
+        guard manifest.record.id == record.id else {
+            throw BackupError.manifestMismatch
+        }
     }
 
     func exportArchive(record: BackupRecord, token: CancelToken) -> URL? {
@@ -545,6 +610,27 @@ final class BackupEngine: @unchecked Sendable {
             guard !token.isCancelled else { return }
             let destination = FileManager.default.temporaryDirectory
                 .appendingPathComponent(BackupStore.safeName(record.name) + "-backup.zip")
+            try? FileManager.default.removeItem(at: destination)
+            if (try? FileManager.default.copyItem(at: zipped, to: destination)) != nil {
+                archive = destination
+            }
+        }
+        return archive
+    }
+
+    func exportAllArchives(token: CancelToken) -> URL? {
+        let root = BackupPaths.root
+        guard manager.fileExists(atPath: root.path), !token.isCancelled else { return nil }
+
+        let coordinator = NSFileCoordinator()
+        var coordinationError: NSError?
+        var archive: URL?
+        coordinator.coordinate(readingItemAt: root,
+                               options: .forUploading,
+                               error: &coordinationError) { zipped in
+            guard !token.isCancelled else { return }
+            let destination = FileManager.default.temporaryDirectory
+                .appendingPathComponent("worsefiles-backups.zip")
             try? FileManager.default.removeItem(at: destination)
             if (try? FileManager.default.copyItem(at: zipped, to: destination)) != nil {
                 archive = destination
@@ -598,6 +684,12 @@ final class BackupEngine: @unchecked Sendable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return encoder
     }()
+
+    private static let decoder: JSONDecoder = {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return decoder
+    }()
 }
 
 @MainActor
@@ -627,13 +719,65 @@ enum BackupSupport {
     }
 
     static func restoreTarget(for record: BackupRecord) -> String? {
-        if let identifier = record.containerIdentifier,
-           let path = Catalog.shared.path(forIdentifier: identifier),
-           FileManager.default.fileExists(atPath: path) {
-            return path
+        let manager = FileManager.default
+        if let identifier = record.containerIdentifier {
+            // Ask the container manager first: after a reinstall the live
+            // UUID is new, and the cached label map may still be stale.
+            if let live = InstalledApps.containerPath(for: identifier),
+               isDirectory(live, manager: manager) {
+                return PathTool.canonical(live)
+            }
+            // MCM can refuse a data container on iOS 27. Reading the
+            // identifier xattr of each container is slower but needs no
+            // cached label, so restore works before the list is opened.
+            if let live = xattrLookup(identifier) {
+                return PathTool.canonical(live)
+            }
+            if let cached = Catalog.shared.path(forIdentifier: identifier),
+               isDirectory(cached, manager: manager) {
+                return PathTool.canonical(cached)
+            }
         }
-        if FileManager.default.fileExists(atPath: record.sourcePath) {
+        if isDirectory(record.sourcePath, manager: manager) {
             return containerPath(for: record.sourcePath) ?? record.sourcePath
+        }
+        return nil
+    }
+
+    static func spaceWarning(target: String, bytes: Int64) -> String? {
+        let keys: Set<URLResourceKey> = [.volumeAvailableCapacityForImportantUsageKey]
+        guard let values = try? URL(fileURLWithPath: target).resourceValues(forKeys: keys),
+              let available = values.volumeAvailableCapacityForImportantUsage else {
+            return nil
+        }
+        let margin: Int64 = 256 * 1024 * 1024
+        guard available < bytes + margin else { return nil }
+        return "目标卷可用空间约 \(Format.bytes(available))，备份约 \(Format.bytes(bytes))；APFS 克隆失败时会改为复制，可能中途空间不足。"
+    }
+
+    private static func isDirectory(_ path: String, manager: FileManager) -> Bool {
+        var isDirectory: ObjCBool = false
+        return manager.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
+    }
+
+    private static func xattrLookup(_ identifier: String) -> String? {
+        let broker = SandboxBroker.shared
+        let manager = FileManager.default
+        for root in [Roots.dataApplication, Roots.pluginKit] {
+            var lease: String?
+            if (try? broker.access(root.path, quiet: true)) != nil {
+                lease = root.path
+            }
+            defer {
+                if let lease { broker.release(lease, quiet: true) }
+            }
+            guard let names = try? manager.contentsOfDirectory(atPath: root.path) else { continue }
+            for name in names where !name.hasPrefix(".") {
+                let path = root.path + "/" + name
+                if ContainerMetadata.identifier(atPath: path) == identifier {
+                    return path
+                }
+            }
         }
         return nil
     }

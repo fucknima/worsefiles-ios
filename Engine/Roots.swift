@@ -100,6 +100,15 @@ enum Roots {
         }
     }
 
+    // Builds are only exercised on iOS 27.0.1. Everything else inside the
+    // documented window is best effort, and the UI must not imply otherwise.
+    static var verifiedVersion: Bool {
+        let version = ProcessInfo.processInfo.operatingSystemVersion
+        return version.majorVersion == 27
+            && version.minorVersion == 0
+            && version.patchVersion == 1
+    }
+
     static var all: [RootSpec] {
         var specs = [dataApplication, pluginKit, internalDaemon, appGroup]
         if isIOS27OrLater {

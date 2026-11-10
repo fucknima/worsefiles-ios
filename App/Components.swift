@@ -12,31 +12,39 @@ struct FileGlyph: View {
     let item: FSItem
 
     var body: some View {
-        if let data = item.iconData, let image = UIImage(data: data) {
-            Image(uiImage: image)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 36, height: 36)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        } else if let identifier = item.identifier, item.isDirectory {
-            let style = ServiceGlyph.style(for: identifier)
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(style.color.gradient)
+        Group {
+            if let data = item.iconData, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
                     .frame(width: 36, height: 36)
-                Image(systemName: style.symbol)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else if let identifier = item.identifier, item.isDirectory {
+                let style = ServiceGlyph.style(for: identifier)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(style.color.gradient)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: style.symbol)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            } else {
+                let style = FileGlyph.style(for: item)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(style.color.opacity(0.15))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: style.symbol)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(style.color)
+                }
             }
-        } else {
-            let style = FileGlyph.style(for: item)
-            ZStack {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(style.color.opacity(0.15))
-                    .frame(width: 36, height: 36)
-                Image(systemName: style.symbol)
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(style.color)
+        }
+        .onAppear {
+            guard item.iconData == nil, let identifier = item.identifier else { return }
+            Task { @MainActor in
+                AppIconStore.shared.requestVisible(identifier)
             }
         }
     }

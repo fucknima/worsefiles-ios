@@ -12,6 +12,9 @@ enum SettingsKey {
     static let sortAscending = "sortAscending"
     static let maxInode = "maxInodeOverride"
     static let autoResolveLabels = "autoResolveLabels"
+    static let cleanupIncludesDaemons = "cleanupIncludesDaemons"
+    static let restoreSnapshot = "restoreSnapshot"
+    static let hasSeenIntro = "hasSeenIntro"
 }
 
 enum AppSettings {
@@ -32,6 +35,26 @@ enum AppSettings {
     static var showHidden: Bool {
         get { UserDefaults.standard.bool(forKey: SettingsKey.showHidden) }
         set { UserDefaults.standard.set(newValue, forKey: SettingsKey.showHidden) }
+    }
+
+    // Off by default: a cache cleanup should not touch system daemons.
+    static var cleanupIncludesDaemons: Bool {
+        get { UserDefaults.standard.bool(forKey: SettingsKey.cleanupIncludesDaemons) }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.cleanupIncludesDaemons) }
+    }
+
+    // Snapshot the destination folder before a restore overwrites it.
+    static var restoreSnapshot: Bool {
+        get {
+            if UserDefaults.standard.object(forKey: SettingsKey.restoreSnapshot) == nil { return true }
+            return UserDefaults.standard.bool(forKey: SettingsKey.restoreSnapshot)
+        }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.restoreSnapshot) }
+    }
+
+    static var hasSeenIntro: Bool {
+        get { UserDefaults.standard.bool(forKey: SettingsKey.hasSeenIntro) }
+        set { UserDefaults.standard.set(newValue, forKey: SettingsKey.hasSeenIntro) }
     }
 
     static var foldersFirst: Bool {

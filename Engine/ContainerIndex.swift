@@ -16,6 +16,7 @@ extension Notification.Name {
 
 struct ContainerScanSummary {
     let added: Int
+    let addedApps: Int
     let total: Int
     let full: Bool
 }
@@ -23,6 +24,8 @@ struct ContainerScanSummary {
 struct ContainerReconcileSummary {
     let added: Int
     let removed: Int
+    let addedApps: Int
+    let removedApps: Int
     let installedApps: Int
     let installedPaths: Int
     let usedInstalledList: Bool
@@ -95,6 +98,7 @@ final class ContainerIndex: ObservableObject {
         let started = Date()
         let catalog = Catalog.shared
         let roots = Roots.all.map { PathTool.canonical($0.path) }
+        let dataRoot = PathTool.canonical(Roots.dataApplication.path)
         let cachedPaths = roots.flatMap { catalog.scanRecord(for: $0)?.paths ?? [] }
 
         let snapshot = await Task.detached(priority: .utility) {
@@ -109,9 +113,11 @@ final class ContainerIndex: ObservableObject {
         let missing = await Task.detached(priority: .utility) {
             Self.missingPaths(cachedPaths)
         }.value
-        var removed = catalog.prunePaths(Set(missing))
+        var removedPaths = Set(missing.map { PathTool.canonical($0) })
+        var removed = catalog.prunePaths(removedPaths)
 
         var added = 0
+        var addedApps = 0
         var livePathCount = 0
         var namesChanged = false
 
@@ -135,6 +141,7 @@ final class ContainerIndex: ObservableObject {
                 }
             }
             if !replaced.isEmpty {
+                removedPaths.formUnion(replaced)
                 removed += catalog.prunePaths(replaced)
             }
 
@@ -164,7 +171,11 @@ final class ContainerIndex: ObservableObject {
 
             for root in roots {
                 guard let labels = grouped[root], !labels.isEmpty else { continue }
-                added += catalog.addPaths(Array(labels.keys), to: root, labels: labels)
+                let count = catalog.addPaths(Array(labels.keys), to: root, labels: labels)
+                added += count
+                if root == dataRoot {
+                    addedApps += count
+                }
             }
             catalog.setInstalledAppIDs(apps.map { $0.identifier })
 
@@ -218,8 +229,14 @@ final class ContainerIndex: ObservableObject {
             Log.info("reconcile took \(Int(Date().timeIntervalSince(started) * 1000))ms")
         }
 
+        let cachedDataPaths = Set(cachedPaths.map { PathTool.canonical($0) }
+            .filter { PathTool.parent(of: $0) == dataRoot })
+        let removedApps = removedPaths.intersection(cachedDataPaths).count
+
         return ContainerReconcileSummary(added: added,
                                          removed: removed,
+                                         addedApps: addedApps,
+                                         removedApps: removedApps,
                                          installedApps: apps.count,
                                          installedPaths: livePathCount,
                                          usedInstalledList: hasList)
@@ -283,6 +300,7 @@ final class ContainerIndex: ObservableObject {
             lastCompleted = Date()
             lastAdded = 0
             return ContainerScanSummary(added: 0,
+                                        addedApps: 0,
                                         total: roots.reduce(0) { $0 + catalog.count(for: $1) },
                                         full: false)
         }
@@ -312,11 +330,13 @@ final class ContainerIndex: ObservableObject {
         progress = nil
         if scanToken.isCancelled { throw ContainerIndexError.cancelled }
 
-        let added = catalog.mergeRootScan(results: found,
-                                          roots: roots,
-                                          watermark: end,
-                                          replace: replace,
-                                          version: Self.indexVersion)
+        let addedByRoot = catalog.mergeRootScan(results: found,
+                                                roots: roots,
+                                                watermark: end,
+                                                replace: replace,
+                                                version: Self.indexVersion)
+        let added = addedByRoot.values.reduce(0, +)
+        let addedApps = addedByRoot[PathTool.canonical(Roots.dataApplication.path)] ?? 0
         let daemons = catalog.scanRecord(for: Roots.internalDaemon.path)?.paths ?? []
         AppNames.shared.ensureLoaded(daemonContainers: daemons)
         let total = roots.reduce(0) { $0 + catalog.count(for: $1) }
@@ -329,6 +349,6 @@ final class ContainerIndex: ObservableObject {
         }
         NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
 
-        return ContainerScanSummary(added: added, total: total, full: replace)
+        return ContainerScanSummary(added: added, addedApps: addedApps, total: total, full: replace)
     }
 }

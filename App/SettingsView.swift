@@ -20,6 +20,7 @@ struct SettingsView: View {
 
     @State private var groupSnapshot = AppGroupResolver.snapshot()
     @State private var clearTarget: ClearTarget?
+    @State private var showIntro = false
 
     private enum ClearTarget: String, Identifiable, Equatable {
         case scans = "扫描结果"
@@ -45,6 +46,9 @@ struct SettingsView: View {
             }
             .onAppear {
                 groupSnapshot = AppGroupResolver.snapshot(refresh: true)
+            }
+            .sheet(isPresented: $showIntro) {
+                IntroView()
             }
             .confirmationDialog("清除缓存",
                                 isPresented: Binding(
@@ -195,13 +199,21 @@ struct SettingsView: View {
         } header: {
             Text("沙盒")
         } footer: {
-            Text("worse_query 仅覆盖 iOS 26.0–26.7.2 / 27.2，且只适用于自己的设备。不是越狱，也不提供越狱能力。")
+            Text("只在 iOS 27.0.1 实测；worse_query 文档区间为 iOS 26.0–26.7.2 / 27.2。不是越狱，也不提供越狱能力。")
         }
     }
 
     private var aboutSection: some View {
         Section {
             LabeledContent("版本", value: versionText)
+            Button {
+                showIntro = true
+            } label: {
+                Label("使用说明", systemImage: "questionmark.circle")
+            }
+            Link(destination: URL(string: "https://github.com/fucknima/worsefiles-ios")!) {
+                Label("WorseFiles 源码（GPL-3.0）", systemImage: "arrow.up.right.square")
+            }
             Link(destination: URL(string: "https://github.com/forcequitOS/worse_query")!) {
                 Label("worse_query 项目", systemImage: "arrow.up.right.square")
             }
@@ -211,7 +223,7 @@ struct SettingsView: View {
         } header: {
             Text("关于")
         } footer: {
-            Text("worse_query 与 pathleak © 2026 Taj C (forcequit)，GPL-3.0。WorseFiles 是派生作品，同样以 GPL-3.0 发布。")
+            Text("worse_query 与 pathleak © 2026 Taj C (forcequit)，GPL-3.0。WorseFiles 是派生作品，同样以 GPL-3.0 发布；完整源码与 NOTICE 见项目仓库。")
         }
     }
 
@@ -223,7 +235,8 @@ struct SettingsView: View {
 
     private var escapeStatus: String {
         if !Roots.escapeSupported { return "不可用" }
-        return Roots.testedWindow ? "测试区间内" : "未测试"
+        if Roots.verifiedVersion { return "已实测（27.0.1）" }
+        return Roots.testedWindow ? "未实测（尽力而为）" : "未测试"
     }
 
     private var versionText: String {

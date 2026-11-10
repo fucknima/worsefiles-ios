@@ -105,6 +105,9 @@ struct CleanupReport {
     let freed: Int64
     let targets: Int
     let failed: [String]
+    // Targets that were cleaned completely. The view removes them from the
+    // plan so the list survives a cleanup instead of going blank.
+    let cleaned: Set<String>
 
     var summary: String {
         if failed.isEmpty {
@@ -203,6 +206,7 @@ final class CleanupEngine: @unchecked Sendable {
         var freed: Int64 = 0
         var completed = 0
         var failed: [String] = []
+        var cleaned = Set<String>()
 
         for (index, target) in plan.targets.enumerated() {
             if token.isCancelled { break }
@@ -234,14 +238,17 @@ final class CleanupEngine: @unchecked Sendable {
                     }
                 }
             }
-            if !targetFailed { completed += 1 }
+            if !targetFailed {
+                completed += 1
+                cleaned.insert(target.id)
+            }
         }
 
         progress(CleanupProgress(phase: "清理",
                                  done: plan.targets.count,
                                  total: plan.targets.count,
                                  current: nil))
-        return CleanupReport(freed: freed, targets: completed, failed: failed)
+        return CleanupReport(freed: freed, targets: completed, failed: failed, cleaned: cleaned)
     }
 
     private static func isRealDirectory(_ path: String) -> Bool {

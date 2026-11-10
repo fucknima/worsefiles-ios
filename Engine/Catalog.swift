@@ -313,15 +313,15 @@ final class Catalog: ObservableObject {
     }
 
     // Merge one root walk into every root record and advance the shared inode
-    // watermark once. Returns the number of paths that were not cached before.
+    // watermark once. Returns the number of newly added paths per root.
     @discardableResult
     func mergeRootScan(results: [String: [String]],
                        roots: [String],
                        watermark: UInt64,
                        replace: Bool,
-                       version: Int) -> Int {
+                       version: Int) -> [String: Int] {
         var next = disk
-        var added = 0
+        var addedByRoot: [String: Int] = [:]
         for root in roots {
             let key = PathTool.canonical(root)
             let paths = results[key] ?? results[root] ?? []
@@ -332,7 +332,7 @@ final class Catalog: ObservableObject {
             } else {
                 record.paths = Array(Set(record.paths).union(paths)).sorted()
             }
-            added += max(0, record.paths.count - before)
+            addedByRoot[key] = max(0, record.paths.count - before)
             record.watermark = max(record.watermark, watermark)
             record.updated = Date()
             next.scans[key] = record
@@ -342,7 +342,7 @@ final class Catalog: ObservableObject {
         next.scanVersion = version
         disk = next
         store.save(next)
-        return added
+        return addedByRoot
     }
 
     func clearScans() {

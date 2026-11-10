@@ -471,7 +471,7 @@ final class FileService: @unchecked Sendable {
             var lines: [String] = []
             let version = ProcessInfo.processInfo.operatingSystemVersion
             lines.append("系统版本：iOS \(version.majorVersion).\(version.minorVersion).\(version.patchVersion)")
-            lines.append("支持区间：iOS 26.0–26.7.2 / 27.2（worse_query）")
+            lines.append("实测版本：iOS 27.0.1；worse_query 文档区间：iOS 26.0–26.7.2 / 27.2")
             let snapshot = AppGroupResolver.snapshot(refresh: true)
             lines.append("App Group（自动检测）：\(snapshot.active)")
             lines.append("签名 App Groups：\(snapshot.groups.isEmpty ? "无或不可读" : snapshot.groups.joined(separator: ", "))")

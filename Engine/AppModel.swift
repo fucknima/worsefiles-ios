@@ -79,14 +79,22 @@ final class AppModel: ObservableObject {
         do {
             let summary = try await ContainerIndex.shared.ensureScanned(full: false)
             guard announce else { return }
-            let added = summary.added + (reconcile?.added ?? 0)
-            let removed = reconcile?.removed ?? 0
-            if added > 0 && removed > 0 {
-                flash("已同步：新增 \(added)，移除 \(removed)")
-            } else if removed > 0 {
-                flash("已移除 \(removed) 个失效容器")
-            } else if added > 0 {
-                flash("已更新 \(added) 个容器")
+            let addedApps = summary.addedApps + (reconcile?.addedApps ?? 0)
+            let removedApps = reconcile?.removedApps ?? 0
+            let addedContainers = summary.added + (reconcile?.added ?? 0)
+            let removedContainers = reconcile?.removed ?? 0
+            if addedApps > 0 && removedApps > 0 {
+                flash("已同步：新增 \(addedApps) 个 App，移除 \(removedApps) 个 App")
+            } else if removedApps > 0 {
+                flash("已移除 \(removedApps) 个 App")
+            } else if addedApps > 0 {
+                flash("已更新 \(addedApps) 个 App")
+            } else if addedContainers > 0 && removedContainers > 0 {
+                flash("已同步：新增 \(addedContainers) 个容器，移除 \(removedContainers) 个容器")
+            } else if removedContainers > 0 {
+                flash("已移除 \(removedContainers) 个失效容器")
+            } else if addedContainers > 0 {
+                flash("已更新 \(addedContainers) 个容器")
             }
         } catch let error as ContainerIndexError {
             if case .cancelled = error { return }

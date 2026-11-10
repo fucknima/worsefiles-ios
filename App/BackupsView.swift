@@ -213,14 +213,14 @@ struct BackupExportFile: Identifiable {
 }
 
 enum BackupsAlert: Identifiable {
-    case restore(BackupRecord)
+    case restore(BackupRecord, String)
     case delete(BackupRecord)
     case report(String)
     case error(String)
 
     var id: String {
         switch self {
-        case .restore(let record): return "restore-\(record.id)"
+        case .restore(let record, _): return "restore-\(record.id)"
         case .delete(let record): return "delete-\(record.id)"
         case .report: return "report"
         case .error: return "error"
@@ -242,20 +242,15 @@ final class BackupsModel: ObservableObject {
 
     func beginRestore(_ record: BackupRecord) {
         guard !isBusy else { return }
-        guard BackupSupport.restoreTarget(for: record) != nil else {
-            alert = .error("找不到备份对应的容器。App 可能已卸载。")
-            return
-        }
-        alert = .restore(record)
-    }
-
-    func restore(_ record: BackupRecord) {
-        guard !isBusy else { return }
         guard let target = BackupSupport.restoreTarget(for: record) else {
             alert = .error("找不到备份对应的容器。App 可能已卸载。")
             return
         }
+        alert = .restore(record, target)
+    }
 
+    func restore(_ record: BackupRecord, target: String, snapshot: Bool) {
+        guard !isBusy else { return }
         busyLabel = "恢复…"
         progress = BackupProgress(phase: "恢复",
                                   bytes: 0,
@@ -271,6 +266,7 @@ final class BackupsModel: ObservableObject {
                 let result = try await Task.detached(priority: .userInitiated) {
                     try BackupEngine.shared.restore(record: record,
                                                     targetContainer: target,
+                                                    snapshot: snapshot,
                                                     token: token) { value in
                         Task { @MainActor [weak self] in
                             self?.receive(value)
@@ -283,6 +279,9 @@ final class BackupsModel: ObservableObject {
                 self.busyLabel = nil
                 self.progress = nil
                 UIApplication.shared.isIdleTimerDisabled = false
+                if let snapshot = result.snapshot {
+                    BackupStore.shared.add(snapshot)
+                }
                 var text = result.summary
                 if !result.errors.isEmpty {
                     text += "\n" + result.errors.prefix(6).joined(separator: "\n")
@@ -339,6 +338,31 @@ final class BackupsModel: ObservableObject {
         }
     }
 
+    func exportAll() {
+        guard !isBusy, !BackupStore.shared.records.isEmpty else { return }
+        busyLabel = "打包全部…"
+        progress = nil
+        let token = CancelToken()
+        self.token = token
+        UIApplication.shared.isIdleTimerDisabled = true
+
+        Task {
+            let url = await Task.detached(priority: .userInitiated) {
+                BackupEngine.shared.exportAllArchives(token: token)
+            }.value
+
+            UIApplication.shared.isIdleTimerDisabled = false
+            guard self.token === token else { return }
+            self.token = nil
+            self.busyLabel = nil
+            if let url {
+                self.exportFile = BackupExportFile(url: url)
+            } else {
+                self.alert = .error("导出全部备份失败。")
+            }
+        }
+    }
+
     func cancel() {
         token?.cancel()
     }
@@ -355,6 +379,7 @@ struct BackupsView: View {
     @ObservedObject private var store = BackupStore.shared
     @ObservedObject private var icons = AppIconStore.shared
     @StateObject private var model = BackupsModel()
+    @AppStorage(SettingsKey.restoreSnapshot) private var restoreSnapshot = true
 
     var body: some View {
         List {
@@ -407,16 +432,30 @@ struct BackupsView: View {
                             .foregroundStyle(.secondary)
                     }
                 } footer: {
-                    Text("点一份备份开始恢复；同名文件会被覆盖。备份在 Documents/Backups，可导出 ZIP 带走。")
+                    Text("点一份备份开始恢复；同名文件会被覆盖。备份在 Documents/Backups，删除本应用会一起删除，建议定期“导出全部备份”。")
                 }
+            }
+
+            Section {
+                Toggle("恢复前自动快照", isOn: $restoreSnapshot)
+            } header: {
+                Text("恢复保护")
+            } footer: {
+                Text(restoreSnapshot
+                     ? "恢复前把目标目录另存一份完整备份，失败可回退。APFS 克隆通常只占元数据；快照失败会中止恢复。"
+                     : "关闭后恢复直接覆盖，没有回退。仅在确定备份可靠时关闭。")
             }
 
             if let progress = model.progress {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        ProgressView(value: progress.fraction ?? 0)
+                        if let fraction = progress.fraction {
+                            ProgressView(value: fraction)
+                        } else {
+                            ProgressView()
+                        }
                         HStack {
-                            Text(Format.bytes(progress.bytes))
+                            Text("\(progress.phase) · \(Format.bytes(progress.bytes))")
                             Spacer()
                             Text("\(progress.files) 个文件")
                         }
@@ -437,6 +476,19 @@ struct BackupsView: View {
                         model.cancel()
                     }
                 }
+            } else if !store.records.isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            model.exportAll()
+                        } label: {
+                            Label("导出全部备份", systemImage: "square.and.arrow.up.on.square")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("备份操作")
+                }
             }
         }
         .onAppear {
@@ -455,11 +507,19 @@ struct BackupsView: View {
         }
         .alert(item: $model.alert) { value in
             switch value {
-            case .restore(let record):
-                let target = BackupSupport.restoreTarget(for: record) ?? record.sourcePath
+            case .restore(let record, let target):
+                var message = "将恢复到 \(PathTool.short(target, keep: 4))；同名文件会被覆盖。"
+                if restoreSnapshot {
+                    message += "\n恢复前会先快照目标目录。"
+                }
+                if let warning = BackupSupport.spaceWarning(target: target, bytes: record.bytes) {
+                    message += "\n" + warning
+                }
                 return Alert(title: Text("恢复备份"),
-                             message: Text("将恢复到 \(PathTool.short(target, keep: 4))；同名文件会被覆盖，无法撤销。"),
-                             primaryButton: .destructive(Text("恢复")) { model.restore(record) },
+                             message: Text(message),
+                             primaryButton: .destructive(Text("恢复")) {
+                                 model.restore(record, target: target, snapshot: restoreSnapshot)
+                             },
                              secondaryButton: .cancel(Text("取消")))
             case .delete(let record):
                 return Alert(title: Text("删除备份"),

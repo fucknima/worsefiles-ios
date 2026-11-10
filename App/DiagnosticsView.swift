@@ -29,6 +29,7 @@ struct DiagnosticsContent: View {
     @State private var running = true
     @State private var copied = false
     @State private var copiedLog = false
+    @State private var copiedReport = false
     @State private var exportFile: ExportFile?
 
     private struct ExportFile: Identifiable {
@@ -83,7 +84,7 @@ struct DiagnosticsContent: View {
                 }
             } footer: {
                 if let path = Log.filePath {
-                    Text("文件：\(path)（Documents，可在“文件”App 或应用内 Documents 查看）")
+                    Text("文件：\(path)（Documents，可在“文件”App 或应用内 Documents 查看）。日志包含本机容器路径，导出前注意。")
                 }
             }
 
@@ -112,6 +113,16 @@ struct DiagnosticsContent: View {
                     app.flash("已复制诊断结果")
                 } label: {
                     Label(copied ? "已复制" : "复制诊断结果", systemImage: "doc.on.doc")
+                }
+                .disabled(running || lines.isEmpty)
+
+                Button {
+                    UIPasteboard.general.string = fullReport
+                    copiedReport = true
+                    app.flash("已复制完整报告")
+                } label: {
+                    Label(copiedReport ? "完整报告已复制" : "复制完整报告（含日志）",
+                          systemImage: "doc.text.magnifyingglass")
                 }
                 .disabled(running || lines.isEmpty)
 
@@ -174,14 +185,39 @@ struct DiagnosticsContent: View {
         }
     }
 
+    private var fullReport: String {
+        var text = lines.joined(separator: "\n")
+        text += "\n\n— 日志（最近 \(min(120, Log.lines.count)) 行）—\n"
+        text += Log.lines.suffix(120).joined(separator: "\n")
+        return text
+    }
+
+    private static var deviceModel: String {
+        var size = 0
+        guard sysctlbyname("hw.machine", nil, &size, nil, 0) == 0, size > 0 else {
+            return "unknown"
+        }
+        var machine = [CChar](repeating: 0, count: size)
+        guard sysctlbyname("hw.machine", &machine, &size, nil, 0) == 0 else {
+            return "unknown"
+        }
+        return String(cString: machine)
+    }
+
     private func run() async {
         running = true
         copied = false
         copiedLog = false
+        copiedReport = false
         let result = await Task.detached(priority: .userInitiated) {
             FileService.shared.diagnose()
         }.value
         var detail = result
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        detail.append("应用版本：\(version) (\(build))")
+        detail.append("设备型号：\(Self.deviceModel)")
         for root in Roots.all {
             detail.append("\(root.title)：\(Catalog.shared.count(for: root.path)) 项")
         }

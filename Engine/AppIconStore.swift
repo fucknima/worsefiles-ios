@@ -54,10 +54,21 @@ final class AppIconStore: ObservableObject {
         return nil
     }
 
-    func prefetch(_ identifiers: [String]) {
-        for identifier in Set(identifiers) where !identifier.isEmpty {
+    func prefetch(_ identifiers: [String], limit: Int = 80) {
+        var seen = Set<String>()
+        var count = 0
+        for identifier in identifiers {
+            guard !identifier.isEmpty, seen.insert(identifier).inserted else { continue }
             request(identifier)
+            count += 1
+            if count >= limit { break }
         }
+    }
+
+    // Called by a row when it becomes visible, so a long list fetches icons
+    // as it scrolls instead of asking UIKit for a thousand icons at once.
+    func requestVisible(_ identifier: String) {
+        request(identifier)
     }
 
     private func request(_ identifier: String) {

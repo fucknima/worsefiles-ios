@@ -10,10 +10,12 @@ struct RootView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject private var catalog = Catalog.shared
     @State private var activeSheet: RootSheet?
+    @AppStorage(SettingsKey.hasSeenIntro) private var hasSeenIntro = false
 
     private enum RootSheet: String, Identifiable {
         case settings
         case diagnostics
+        case intro
         var id: String { rawValue }
     }
 
@@ -44,6 +46,9 @@ struct RootView: View {
                 BrowserView(target: target)
             }
             .task {
+                if !hasSeenIntro {
+                    activeSheet = .intro
+                }
                 await app.refreshIndexOnLaunch()
             }
             .sheet(item: $activeSheet) { sheet in
@@ -53,6 +58,10 @@ struct RootView: View {
                         SettingsView()
                     case .diagnostics:
                         DiagnosticsView()
+                    case .intro:
+                        IntroView {
+                            hasSeenIntro = true
+                        }
                     }
                 }
                 .environmentObject(app)
@@ -81,12 +90,18 @@ struct RootView: View {
                             title: "系统不受支持",
                             subtitle: "worse_query 面向 iOS 26 与 27。当前 iOS \(Roots.majorVersion)，本应用沙盒与 App Group 仍可浏览。",
                             detail: nil)
-                } else if groupAvailable && Roots.testedWindow {
+                } else if groupAvailable && Roots.verifiedVersion {
                     RootRow(symbol: "checkmark.shield.fill",
                             tint: .green,
                             title: "环境就绪",
-                            subtitle: "App Group 可用，容器路径按 worse_query 的范围访问。",
+                            subtitle: "App Group 可用，iOS 27.0.1 实测通过。",
                             detail: nil)
+                } else if groupAvailable && Roots.testedWindow {
+                    RootRow(symbol: "exclamationmark.triangle.fill",
+                            tint: .orange,
+                            title: "系统版本未完全验证",
+                            subtitle: "仅 iOS 27.0.1 实测；当前 iOS \(Roots.majorVersion)。仍可尝试，失败时先看诊断。",
+                            detail: "诊断")
                 } else if groupAvailable {
                     RootRow(symbol: "exclamationmark.triangle.fill",
                             tint: .orange,
@@ -105,7 +120,7 @@ struct RootView: View {
         } header: {
             Text("环境")
         } footer: {
-            Text("仅用于自己的设备与容器调试。系统版本需在 iOS 26.0–26.7.2 或 27.2；App Group 由签名提供并自动读取。")
+            Text("仅在 iOS 27.0.1 实测；worse_query 文档区间为 iOS 26.0–26.7.2 / 27.2，其余版本尽力而为。App Group 由签名提供并自动读取。")
         }
     }
 
@@ -251,9 +266,17 @@ struct RootView: View {
     private var aboutSection: some View {
         Section {
             Button {
+                activeSheet = .intro
+            } label: {
+                Label("使用说明", systemImage: "questionmark.circle")
+            }
+            Button {
                 activeSheet = .diagnostics
             } label: {
                 Label("诊断与日志", systemImage: "stethoscope")
+            }
+            Link(destination: URL(string: "https://github.com/fucknima/worsefiles-ios")!) {
+                Label("WorseFiles 源码（GPL-3.0）", systemImage: "arrow.up.right.square")
             }
             Link(destination: URL(string: "https://github.com/forcequitOS/worse_query")!) {
                 Label("worse_query 项目", systemImage: "arrow.up.right.square")
@@ -268,7 +291,7 @@ struct RootView: View {
         } header: {
             Text("关于")
         } footer: {
-            Text("worse_query 与 pathleak © 2026 Taj C (forcequit)，GPL-3.0。本应用同以 GPL-3.0 发布，源码在项目仓库。")
+            Text("worse_query 与 pathleak © 2026 Taj C (forcequit)，GPL-3.0。本应用同以 GPL-3.0 发布，完整源码与 NOTICE 见项目仓库。")
         }
     }
 

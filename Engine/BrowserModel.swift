@@ -343,9 +343,9 @@ final class BrowserModel: ObservableObject {
     }
 
     private func prefetchIcons() {
-        let identifiers = Set(items.compactMap { $0.identifier })
+        let identifiers = items.compactMap { $0.identifier }
         guard !identifiers.isEmpty else { return }
-        AppIconStore.shared.prefetch(Array(identifiers))
+        AppIconStore.shared.prefetch(identifiers)
     }
 
     func toggleSelectionMode() {

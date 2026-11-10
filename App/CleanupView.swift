@@ -40,6 +40,16 @@ final class CleanupModel: ObservableObject {
     @Published private(set) var progress: CleanupProgress?
     @Published var alert: CleanupAlert?
     @Published var selected: Set<String> = []
+    @Published private(set) var lastResult: CleanupReport?
+    @Published var includeDaemons: Bool = AppSettings.cleanupIncludesDaemons {
+        didSet {
+            guard oldValue != includeDaemons else { return }
+            AppSettings.cleanupIncludesDaemons = includeDaemons
+            guard phase == .idle else { return }
+            plan = nil
+            scan()
+        }
+    }
 
     private var token: CancelToken?
     private var lastProgressAt = Date.distantPast
@@ -104,6 +114,7 @@ final class CleanupModel: ObservableObject {
 
             guard self.token === token else { return }
             self.token = nil
+            self.lastResult = nil
             self.plan = result
             self.selected = Set(result.targets.map { $0.id })
             self.phase = .idle
@@ -137,8 +148,17 @@ final class CleanupModel: ObservableObject {
 
             guard self.token === token else { return }
             self.token = nil
+            self.lastResult = result
             self.alert = .report(result)
-            self.plan = nil
+            if let plan = self.plan {
+                let remaining = plan.targets.filter { !result.cleaned.contains($0.id) }
+                self.plan = CleanupPlan(targets: remaining,
+                                        totalBytes: remaining.reduce(0) { $0 + $1.bytes },
+                                        totalFiles: remaining.reduce(0) { $0 + $1.files },
+                                        scanned: plan.scanned,
+                                        failed: result.failed,
+                                        date: Date())
+            }
             self.selected.removeAll()
             self.phase = .idle
             self.progress = nil
@@ -159,7 +179,10 @@ final class CleanupModel: ObservableObject {
     }
 
     private func containerList() -> [CleanupContainer] {
-        let roots = [Roots.dataApplication, Roots.pluginKit, Roots.internalDaemon]
+        var roots = [Roots.dataApplication, Roots.pluginKit]
+        if includeDaemons {
+            roots.append(Roots.internalDaemon)
+        }
         return roots.flatMap { root in
             Catalog.shared.items(for: root.path).map { item in
                 CleanupContainer(path: item.path,
@@ -192,6 +215,15 @@ struct CleanupView: View {
                      : "额外清理日志、应用状态快照与启动图缓存；不含 Documents、偏好设置和 App Group。")
             }
 
+            Section {
+                Toggle("包含系统守护进程", isOn: $model.includeDaemons)
+                    .disabled(model.isBusy)
+            } footer: {
+                Text(model.includeDaemons
+                     ? "守护进程容器属于系统服务，清理可能让正在运行的服务丢缓存。只在明确知道后果时开启。"
+                     : "默认只处理 App 与扩展。系统守护进程容器不会出现在清理列表。")
+            }
+
             if let progress = model.progress {
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
@@ -217,9 +249,14 @@ struct CleanupView: View {
             if let plan = model.plan {
                 if plan.targets.isEmpty {
                     Section {
-                        Text(model.isBusy ? "扫描中…" : "没有发现可清理的缓存。")
+                        Text(emptyText)
                             .font(.footnote)
                             .foregroundStyle(.secondary)
+                        Button {
+                            model.scan()
+                        } label: {
+                            Label("重新扫描", systemImage: "arrow.clockwise")
+                        }
                     }
                 } else {
                     Section {
@@ -269,6 +306,9 @@ struct CleanupView: View {
         .listStyle(.insetGrouped)
         .navigationTitle("清理缓存")
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable {
+            model.scan()
+        }
         .toolbar {
             if model.isBusy {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -277,6 +317,14 @@ struct CleanupView: View {
                     }
                 }
             } else if model.plan != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        model.scan()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("重新扫描")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         Button("全选") { model.selectAll() }
@@ -311,6 +359,14 @@ struct CleanupView: View {
                              dismissButton: .default(Text("好")))
             }
         }
+    }
+
+    private var emptyText: String {
+        if model.isBusy { return "扫描中…" }
+        if let result = model.lastResult, result.targets > 0 {
+            return "上次清理释放约 \(Format.bytes(result.freed))；重新扫描可查看最新缓存。"
+        }
+        return "没有发现可清理的缓存。"
     }
 
     private func row(_ target: CleanupTarget) -> some View {

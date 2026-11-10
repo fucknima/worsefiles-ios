@@ -10,13 +10,14 @@
 
 | 项目 | 值 |
 | --- | --- |
-| 运行系统 | iOS 26.0–26.7.2 / 27.2 |
+| 实测系统 | iOS 27.0.1（iPhone 真机） |
+| 文档区间 | iOS 26.0–26.7.2 / 27.2（worse_query 声明，未逐一实测，尽力而为） |
 | 构建目标 | iOS 18.0+，需要能编译 SwiftUI 的 Xcode |
 | 设备 | iPhone 真机（`TARGETED_DEVICE_FAMILY = 1`）；模拟器只能验证界面 |
 | 必需能力 | App Groups entitlement |
 | 签名 | 支持 App Groups 的开发者证书或团队；免费 Apple ID 通常不行 |
 
-低于 iOS 26 也能安装启动，但只剩本应用沙盒与自己的 App Group 可浏览。iOS 27 的系统容器入口只在 27 及以上显示。
+低于 iOS 26 也能安装启动，但只剩本应用沙盒与自己的 App Group 可浏览。iOS 27 的系统容器入口只在 27 及以上显示。其他系统版本不宣称支持，只是会尝试并给出诊断。
 
 ## 功能
 
@@ -31,9 +32,10 @@
 - App 组和 iOS 27 系统路径优先直接列举父目录，失败时自动回退到 inode 扫描。
 - 读取容器的 `com.apple.containermanager.identifier` 与 `.com.apple.mobile_container_manager.metadata.plist`，把 UUID 行显示成 bundle identifier；扫描后默认自动解析，也可在菜单手动重试或停止。
 - 容器行显示 App 名称与图标：iOS 27 的 LaunchServices API 不可用，名称解析 lsd 的 CSStore 数据库，再尝试 App bundle 里的 zh-Hans InfoPlist.strings，内置 Apple App 名称表用中文兜底。图标先试 UIKit 私有方法，再试 LSApplicationProxy 图标，再读 Bundle 图标，最后用按 bundle id 关键词生成的占位图标；缓存到 Application Support。
-- 维护 → 清理缓存：安全模式只删 Library/Caches 与 tmp，标准模式再加日志、Saved Application State、SplashBoard；先按 App 汇总可释放空间，支持逐个勾选、全选/全不选、只看 50 MB/200 MB 以上，确认后删除并重建目录。不含 Documents、App Group、系统容器。
-- 备份与恢复：容器或其中任意文件夹可备份到 Documents/Backups；manifest 记录容器 identifier 与容器内相对路径，App 重装换 UUID 后仍能找回新容器。默认跳过缓存，文件优先用 clonefile 克隆，失败回退 copyfile；恢复为同名覆盖。
-- 备份可在列表里导出 ZIP（NSFileCoordinator 打包）后分享；备份放在应用自己的 Documents，删除 App 会一起消失。
+- 维护 → 清理缓存：安全模式只删 Library/Caches 与 tmp，标准模式再加日志、Saved Application State、SplashBoard；先按 App 汇总可释放空间，支持逐个勾选、全选/全不选、只看 50 MB/200 MB 以上，确认后删除并重建目录。清理完成后保留剩余列表，不用重新扫描。默认不含系统守护进程，需要单独开关。不含 Documents、App Group、系统容器。
+- 备份与恢复：容器或其中任意文件夹可备份到 Documents/Backups；manifest 记录容器 identifier 与容器内相对路径，App 重装换 UUID 后按 LiveContainer/MCM 查询或 identifier xattr 找回新容器，不依赖先打开列表。恢复前默认自动快照目标目录，快照失败会中止恢复；恢复为同名覆盖。
+- 备份可在列表里导出 ZIP，或“导出全部备份”一次打包；备份放在应用自己的 Documents，删除 App 会一起消失。
+- 首次启动有使用说明，写明 App Group 必须是专用组、首次扫描耗时、删除无回收站。
 - 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。
 - 多选、全选、目录搜索、隐藏文件开关、按名称/日期/大小/类型排序、文件夹优先。
 - 原生 NavigationStack 推入/返回动画和边缘右滑；面包屑从当前导航链开始，点任意一级直接弹回该层。
@@ -41,6 +43,18 @@
 - 每次同步会对索引里的容器路径做 lstat 校验，只剔除 ENOENT 的项；权限不足的路径保留。
 - 诊断日志写入 Documents/WorseFiles.log，可复制、导出，也可在“文件”App 里直接取。
 - 设置：App Group 自动检测、扫描后自动识别容器名称、隐藏文件、默认排序、inode 上限、缓存清理、句柄释放、诊断与日志。
+
+## 安装（必须先重签）
+
+发布页给的是未签名 IPA，不能直接装。签名同时决定了能不能用：
+
+1. 准备一个包含 App Groups 的证书或团队。免费 Apple ID 通常没有该能力。
+2. 新建一个只给 WorseFiles 用的 App Group，例如 `group.com.yourname.worsefiles`。不要和其他 App 共用：每次容器查询都会删除并重建该组的 `Library/Caches`。
+3. 把 IPA 和 `App/WorseFiles.entitlements` 一起交给重签工具（SideStore、AltStore、ESign、Feather 或自己的 Xcode），并确认 App Group 真的写进签名。应用会从签名自动读取，不需要在应用内填写。
+4. 装到 iPhone 后打开应用：首页顶部应为绿色“环境就绪”。黄色说明系统版本未完全验证或签名没有 App Group。
+5. 更新时保持同一个 bundle id 和 App Group 重签再覆盖安装，应用容器与备份才会保留。证书过期或掉签后重签也遵循同一条。
+
+签名有效期由证书决定；免费配置通常 7 天，付费开发者账号通常 1 年。到期后需要重新签名，数据仍在容器里，覆盖安装即可。
 
 ## 构建
 
@@ -136,6 +150,16 @@ Resources/  AppIcon、AccentColor
 scripts/    build.sh
 project.yml xcodegen 工程描述
 ```
+
+## 常见问题
+
+- 名称是英文或图标是占位图：iOS 27 的 LaunchServices 列表接口不可用，名称和图标只能靠 lsd 的 CSStore、Bundle 的 `InfoPlist.strings`、UIKit 私有图标接口以及占位图回退。到“诊断与日志”复制完整报告，里面的 `图标 <bundle>：api=… raw=… uikit=… proxy=…` 能看出卡在哪一级。
+- 卸载重装后恢复提示找不到容器：应用会先向容器管理器要新路径，再按 identifier xattr 在数据容器里查找，最后才用缓存。如果仍失败，确认 App 已装好并打开过一次。
+- 恢复会覆盖吗：会。默认先给目标目录做一份“恢复前快照”，失败可在备份列表里恢复快照；关闭该开关则直接覆盖。
+- 备份在哪：应用自己的 `Documents/Backups`，可在“文件”App 查看。删除应用会一起删除，重要数据用“导出全部备份”带走。
+- 清理后列表为什么还在：清理完成只移除已经清理的 App，其余目标继续显示；下拉或点刷新可重新扫描。
+- 为什么系统版本显示未完全验证：只有 iOS 27.0.1 做过真机验证。其他版本可以尝试，诊断页会给出具体失败原因。
+- 能上 App Store 吗：不能。使用了私有 API 和 App Group 容器逃逸，只适合自己签名安装。
 
 ## 许可
 

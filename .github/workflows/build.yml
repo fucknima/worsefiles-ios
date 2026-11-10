@@ -37,6 +37,8 @@ jobs:
         run: |
           tail -n 120 build.log || true
           ls -lh WorseFiles-unsigned.ipa || true
+          shasum -a 256 WorseFiles-unsigned.ipa > WorseFiles-unsigned.ipa.sha256 || true
+          cat WorseFiles-unsigned.ipa.sha256 || true
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -44,6 +46,7 @@ jobs:
           name: worsefiles-unsigned-${{ github.sha }}
           path: |
             WorseFiles-unsigned.ipa
+            WorseFiles-unsigned.ipa.sha256
             build.log
           if-no-files-found: warn
 
@@ -52,6 +55,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" WorseFiles-unsigned.ipa \
+          gh release create "${GITHUB_REF_NAME}" \
+            WorseFiles-unsigned.ipa WorseFiles-unsigned.ipa.sha256 App/WorseFiles.entitlements \
             --title "worsefiles ${GITHUB_REF_NAME}" \
             --notes "unsigned ipa, sign before install"
