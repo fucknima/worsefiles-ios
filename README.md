@@ -33,7 +33,7 @@
 - 读取容器的 `com.apple.containermanager.identifier` 与 `.com.apple.mobile_container_manager.metadata.plist`，把 UUID 行显示成 bundle identifier；扫描后默认自动解析，也可在菜单手动重试或停止。
 - 容器行显示 App 名称与图标：iOS 27 的 LaunchServices API 不可用，名称解析 lsd 的 CSStore 数据库，再尝试 App bundle 里的 zh-Hans InfoPlist.strings，内置 Apple App 名称表用中文兜底。图标先试 UIKit 私有方法，再试 LSApplicationProxy 图标，再读 Bundle 图标，最后用按 bundle id 关键词生成的占位图标；缓存到 Application Support。
 - 维护 → 清理缓存：安全模式只删 Library/Caches 与 tmp，标准模式再加日志、Saved Application State、SplashBoard；先按 App 汇总可释放空间，支持逐个勾选、全选/全不选、只看 50 MB/200 MB 以上，确认后删除并重建目录。清理完成后保留剩余列表，不用重新扫描。默认不含系统守护进程，需要单独开关。不含 Documents、App Group、系统容器。
-- 备份与恢复：容器或其中任意文件夹可备份到 Documents/Backups；manifest 记录容器 identifier 与容器内相对路径，App 重装换 UUID 后按 LiveContainer/MCM 查询或 identifier xattr 找回新容器，不依赖先打开列表。恢复前默认自动快照目标目录，快照失败会中止恢复；恢复为同名覆盖。
+- 备份与恢复：容器或其中任意文件夹可备份到 Documents/Backups；manifest 记录容器 identifier 与容器内相对路径，App 重装换 UUID 后按 MCM 查询或 identifier xattr 找回新容器，不依赖先打开列表。恢复前默认自动快照目标目录，快照失败会中止恢复；恢复为同名覆盖。
 - 备份可在列表里导出 ZIP，或“导出全部备份”一次打包；备份放在应用自己的 Documents，删除 App 会一起消失。
 - 首次启动有使用说明，写明 App Group 必须是专用组、首次扫描耗时、删除无回收站。
 - 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。
