@@ -135,6 +135,13 @@ final class JobCenter: ObservableObject {
 
     var isActive: Bool { state != .idle }
 
+    var diagnostic: String {
+        if #available(iOS 26.0, *) {
+            return registered ? (isActive ? "已注册，任务进行中" : "已注册") : "未注册"
+        }
+        return "iOS < 26，仅前台运行"
+    }
+
     @available(iOS 26.0, *)
     private func attach(_ task: BGContinuedProcessingTask) {
         guard state == .submitted || state == .finished else {
@@ -161,9 +168,15 @@ final class JobCenter: ObservableObject {
 
     @available(iOS 26.0, *)
     private func apply(to task: BGContinuedProcessingTask) {
-        let units = max(1, total)
-        task.progress.totalUnitCount = units
-        task.progress.completedUnitCount = min(units, max(0, completed))
+        if total > 0 {
+            task.progress.totalUnitCount = total
+            task.progress.completedUnitCount = min(total, max(0, completed))
+        } else {
+            // Unknown total (backup/export): leave the system indicator
+            // indeterminate instead of showing 100% at the first byte.
+            task.progress.totalUnitCount = 0
+            task.progress.completedUnitCount = 0
+        }
         task.updateTitle(title, subtitle: subtitle)
     }
 

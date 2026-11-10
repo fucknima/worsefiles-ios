@@ -36,6 +36,8 @@
 - 备份与恢复：容器或其中任意文件夹可备份到 Documents/Backups；manifest 记录容器 identifier 与容器内相对路径，App 重装换 UUID 后按 MCM 查询或 identifier xattr 找回新容器，不依赖先打开列表。恢复前默认自动快照目标目录，快照失败会中止恢复；恢复为同名覆盖。
 - 备份可在列表里导出 ZIP，或“导出全部备份”一次打包；备份放在应用自己的 Documents，删除 App 会一起消失。
 - 首次启动有使用说明，写明 App Group 必须是专用组、首次扫描耗时、删除无回收站。
+- 后台继续：iOS 26+ 的备份、恢复、ZIP 打包、清理扫描通过 `BGContinuedProcessingTask` 继续运行，系统显示进度和停止按钮；同一时间只接一个任务，其余操作仍在前台执行。iOS 18–25 没有该 API，只在前台运行。
+- 后台任务需要 `BGTaskSchedulerPermittedIdentifiers` 与 `UIBackgroundModes=processing`；强退 App 会取消任务，恢复默认仍有快照兜底。
 - 文件操作：新建文件夹、重命名、删除、拷贝、剪切、粘贴、制作副本、导入（文件选择器）、分享（导出到临时目录后交给系统）、QuickLook 预览、2 MB 内文本编辑。
 - 多选、全选、目录搜索、隐藏文件开关、按名称/日期/大小/类型排序、文件夹优先。
 - 原生 NavigationStack 推入/返回动画和边缘右滑；面包屑从当前导航链开始，点任意一级直接弹回该层。

@@ -9,6 +9,10 @@ import SwiftUI
 struct WorseFilesApp: App {
     @StateObject private var app = AppModel()
 
+    init() {
+        JobCenter.shared.register()
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()
