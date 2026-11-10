@@ -119,6 +119,7 @@ final class CleanupModel: ObservableObject {
             self.selected = Set(result.targets.map { $0.id })
             self.phase = .idle
             self.progress = nil
+            AppIconStore.shared.prefetch(result.targets.compactMap { $0.identifier })
         }
     }
 
@@ -369,6 +370,15 @@ struct CleanupView: View {
         return "没有发现可清理的缓存。"
     }
 
+    private func title(for target: CleanupTarget) -> String {
+        if let identifier = target.identifier,
+           let name = AppNames.shared.name(for: identifier),
+           !name.isEmpty {
+            return name
+        }
+        return target.displayName
+    }
+
     private func row(_ target: CleanupTarget) -> some View {
         HStack(spacing: 10) {
             Image(systemName: model.selected.contains(target.id) ? "checkmark.circle.fill" : "circle")
@@ -376,7 +386,7 @@ struct CleanupView: View {
                 .foregroundStyle(model.selected.contains(target.id) ? Color.accentColor : Color.secondary.opacity(0.55))
 
             if let identifier = target.identifier,
-               let data = icons.cachedIcon(for: identifier),
+               let data = icons.icon(for: identifier),
                let image = UIImage(data: data) {
                 Image(uiImage: image)
                     .resizable()
@@ -392,7 +402,7 @@ struct CleanupView: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(target.displayName)
+                Text(title(for: target))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text(target.rules.map { $0.title }.joined(separator: " · "))

@@ -157,6 +157,11 @@ final class CleanupEngine: @unchecked Sendable {
                 continue
             }
 
+            // The label cache may not have reached this container yet. Read
+            // the identifier while the extension is held so the row can show
+            // the app icon and name instead of a container glyph.
+            let identifier = container.identifier ?? ContainerMetadata.identifier(atPath: container.path)
+
             var bytesByRule: [CleanupRule: Int64] = [:]
             var files = 0
             for rule in mode.rules {
@@ -177,7 +182,7 @@ final class CleanupEngine: @unchecked Sendable {
 
             if !bytesByRule.isEmpty {
                 targets.append(CleanupTarget(containerPath: container.path,
-                                             identifier: container.identifier,
+                                             identifier: identifier,
                                              displayName: container.displayName,
                                              bytesByRule: bytesByRule,
                                              files: files))

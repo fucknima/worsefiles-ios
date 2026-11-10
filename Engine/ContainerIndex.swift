@@ -335,8 +335,15 @@ final class ContainerIndex: ObservableObject {
                                                 watermark: end,
                                                 replace: replace,
                                                 version: Self.indexVersion)
-        let added = addedByRoot.values.reduce(0, +)
-        let addedApps = addedByRoot[PathTool.canonical(Roots.dataApplication.path)] ?? 0
+        let addedPaths = addedByRoot.values.flatMap { $0 }
+        let added = addedPaths.count
+        let dataRoot = PathTool.canonical(Roots.dataApplication.path)
+        let pluginRoot = PathTool.canonical(Roots.pluginKit.path)
+        let addedApps = addedByRoot[dataRoot]?.count ?? 0
+        let labelPaths = (addedByRoot[dataRoot] ?? []) + (addedByRoot[pluginRoot] ?? [])
+        if !replace, !labelPaths.isEmpty, labelPaths.count <= 64 {
+            resolveLabels(for: labelPaths)
+        }
         let daemons = catalog.scanRecord(for: Roots.internalDaemon.path)?.paths ?? []
         AppNames.shared.ensureLoaded(daemonContainers: daemons)
         let total = roots.reduce(0) { $0 + catalog.count(for: $1) }
@@ -350,5 +357,26 @@ final class ContainerIndex: ObservableObject {
         NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
 
         return ContainerScanSummary(added: added, addedApps: addedApps, total: total, full: replace)
+    }
+
+    // A reinstall creates a new UUID under a fresh inode. Resolve the bundle
+    // identifier of those few new paths right away, so the row, icon and
+    // restore lookup work without opening the container list first.
+    private func resolveLabels(for paths: [String]) {
+        Task.detached(priority: .utility) {
+            var pairs: [String: String] = [:]
+            for path in paths {
+                if let identifier = FileService.shared.identifier(for: path), !identifier.isEmpty {
+                    pairs[PathTool.canonical(path)] = identifier
+                }
+            }
+            guard !pairs.isEmpty else { return }
+            let identifiers = Array(Set(pairs.values))
+            await MainActor.run {
+                Catalog.shared.setLabels(pairs)
+                AppIconStore.shared.prefetch(identifiers)
+                NotificationCenter.default.post(name: .worseFilesIndexUpdated, object: nil)
+            }
+        }
     }
 }

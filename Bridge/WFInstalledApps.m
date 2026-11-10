@@ -446,10 +446,24 @@ static NSString *WFMCMContainerPath(NSString *identifier, NSArray<NSString *> *c
     return nil;
 }
 
+// The all-applications list is refused on iOS 27, but asking for one proxy
+// by bundle id sometimes still answers with its container URL.
+static NSString *WFProxyContainerPath(NSString *identifier, NSString *key) {
+    WFOpenFramework(@"/System/Library/PrivateFrameworks/LaunchServices.framework/LaunchServices");
+    Class proxyClass = NSClassFromString(@"LSApplicationProxy");
+    SEL selector = NSSelectorFromString(@"applicationProxyForIdentifier:");
+    if (!proxyClass || ![proxyClass respondsToSelector:selector]) return nil;
+    id proxy = ((id (*)(id, SEL, id))objc_msgSend)(proxyClass, selector, identifier);
+    if (!proxy) return nil;
+    NSURL *url = WFGet(proxy, key);
+    if ([url isKindOfClass:NSURL.class] && url.path.length > 0) return url.path;
+    return nil;
+}
+
 NSString *WFContainerPathForIdentifier(NSString *identifier) {
     if (identifier.length == 0) return nil;
-    NSString *path = WFMCMContainerPath(identifier, @[@"MCMAppDataContainer"]);
-    if (!path) path = WFMCMContainerPath(identifier, @[@"MCMAppContainer"]);
+    NSString *path = WFMCMContainerPath(identifier, @[@"MCMAppDataContainer", @"MCMAppContainer"]);
+    if (!path) path = WFProxyContainerPath(identifier, @"dataContainerURL");
     if ([path containsString:@"/Bundle/"]) return nil;
     return path;
 }
@@ -457,8 +471,17 @@ NSString *WFContainerPathForIdentifier(NSString *identifier) {
 NSString *WFBundlePathForIdentifier(NSString *identifier) {
     if (identifier.length == 0) return nil;
     NSString *path = WFMCMContainerPath(identifier, @[@"MCMAppContainer"]);
+    if (!path) path = WFProxyContainerPath(identifier, @"bundleURL");
     if (!path || ![path containsString:@"/Bundle/"]) return nil;
     return path;
+}
+
+NSString *WFContainerLookupReport(NSString *identifier) {
+    if (identifier.length == 0) return @"no identifier";
+    NSString *mcm = WFMCMContainerPath(identifier, @[@"MCMAppDataContainer", @"MCMAppContainer"]);
+    NSString *proxy = WFProxyContainerPath(identifier, @"dataContainerURL");
+    return [NSString stringWithFormat:@"mcm=%@ proxy=%@",
+            mcm ?: @"nil", proxy ?: @"nil"];
 }
 
 NSString *WFLocalizedNameAtBundlePath(NSString *bundlePath) {

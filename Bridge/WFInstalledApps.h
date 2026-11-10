@@ -28,6 +28,9 @@ FOUNDATION_EXPORT NSString * _Nullable WFBundlePathForIdentifier(NSString *ident
 // The caller must hold a sandbox extension for the bundle or its parent.
 FOUNDATION_EXPORT NSString * _Nullable WFLocalizedNameAtBundlePath(NSString *bundlePath);
 
+// Which path routes answer for a bundle identifier, for the diagnostics view.
+FOUNDATION_EXPORT NSString *WFContainerLookupReport(NSString *identifier);
+
 // Which source produced the last WFInstalledApps() answer.
 FOUNDATION_EXPORT NSString * _Nullable WFInstalledAppsSource(void);
 

@@ -760,6 +760,18 @@ enum BackupSupport {
         return manager.fileExists(atPath: path, isDirectory: &isDirectory) && isDirectory.boolValue
     }
 
+    private static func newestPaths(_ paths: [String], limit: Int) -> [String] {
+        let scored: [(path: String, time: TimeInterval)] = paths.map { path in
+            var info = stat()
+            let ok = path.withCString { lstat($0, &info) == 0 }
+            guard ok else { return (path, 0) }
+            let seconds = TimeInterval(info.st_mtimespec.tv_sec)
+            let nanos = TimeInterval(info.st_mtimespec.tv_nsec) / 1_000_000_000
+            return (path, seconds + nanos)
+        }
+        return scored.sorted { $0.time > $1.time }.prefix(limit).map { $0.path }
+    }
+
     private static func xattrLookup(_ identifier: String) -> String? {
         let broker = SandboxBroker.shared
         let manager = FileManager.default
@@ -780,12 +792,18 @@ enum BackupSupport {
                 }
             }
             // Listing a container root is often refused on iOS 27, but the
-            // inode index already holds the paths. Re-read their xattrs.
+            // inode index already holds the paths. A fresh install has the
+            // newest container, so try recent paths first, then grant each
+            // container an extension before reading its identifier xattr.
             if let record = Catalog.shared.scanRecord(for: root.path) {
-                for path in record.paths {
-                    if ContainerMetadata.identifier(atPath: path) == identifier {
-                        return path
+                for path in newestPaths(record.paths, limit: 64) {
+                    var pathLease: String?
+                    if (try? broker.access(path, quiet: true)) != nil {
+                        pathLease = path
                     }
+                    let matched = ContainerMetadata.identifier(atPath: path) == identifier
+                    if let pathLease { broker.release(pathLease, quiet: true) }
+                    if matched { return path }
                 }
             }
         }

@@ -231,6 +231,7 @@ struct DiagnosticsContent: View {
             + [Catalog.shared.disk.labels.first?.value ?? "com.kestrel.worsefiles"]
         for probe in probes {
             detail.append("图标 \(probe)：\(WFIconReport(probe))")
+            detail.append("容器查询 \(probe)：\(WFContainerLookupReport(probe))")
         }
         detail.append("已安装应用：\(index.installedAppCount)（数据容器 \(index.installedPathCount)）")
         detail.append("应用列表：\(index.installedListAvailable ? "可用" : "不可用")")
