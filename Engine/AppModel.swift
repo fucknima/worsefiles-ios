@@ -42,6 +42,7 @@ final class AppModel: ObservableObject {
 
     init() {
         load()
+        JobCenter.shared.register()
         FileService.shared.prepare()
         Log.info("WorseFiles started, iOS \(Roots.majorVersion)")
         activationObserver = NotificationCenter.default.addObserver(

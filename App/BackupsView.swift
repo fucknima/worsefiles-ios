@@ -36,6 +36,9 @@ final class BackupCreateModel: ObservableObject {
         let mode = mode
         let request = request
         UIApplication.shared.isIdleTimerDisabled = true
+        JobCenter.shared.begin(title: "备份 \(request.title)",
+                               subtitle: "准备…",
+                               token: token)
 
         Task {
             do {
@@ -57,6 +60,7 @@ final class BackupCreateModel: ObservableObject {
                 BackupStore.shared.add(record)
                 self.onFinished(record)
                 self.completed = true
+                JobCenter.shared.finish(success: true)
             } catch is CancellationError {
                 guard self.token === token else { return }
                 self.token = nil
@@ -64,6 +68,7 @@ final class BackupCreateModel: ObservableObject {
                 self.progress = nil
                 UIApplication.shared.isIdleTimerDisabled = false
                 self.errorMessage = "备份已取消。"
+                JobCenter.shared.finish(success: false)
             } catch {
                 guard self.token === token else { return }
                 self.token = nil
@@ -71,6 +76,7 @@ final class BackupCreateModel: ObservableObject {
                 self.progress = nil
                 UIApplication.shared.isIdleTimerDisabled = false
                 self.errorMessage = error.localizedDescription
+                JobCenter.shared.finish(success: false)
             }
         }
     }
@@ -85,6 +91,10 @@ final class BackupCreateModel: ObservableObject {
         guard finished || Date().timeIntervalSince(lastProgressAt) > 0.1 else { return }
         lastProgressAt = Date()
         progress = value
+        JobCenter.shared.update(phase: value.phase,
+                                completed: value.bytes,
+                                total: value.totalBytes,
+                                detail: "\(value.files) 个文件")
     }
 }
 
@@ -268,6 +278,10 @@ final class BackupsModel: ObservableObject {
         let token = CancelToken()
         self.token = token
         UIApplication.shared.isIdleTimerDisabled = true
+        JobCenter.shared.begin(title: "恢复 \(record.name)",
+                               subtitle: "准备…",
+                               token: token,
+                               total: record.bytes)
 
         Task {
             do {
@@ -295,6 +309,7 @@ final class BackupsModel: ObservableObject {
                     text += "\n" + result.errors.prefix(6).joined(separator: "\n")
                 }
                 self.alert = .report(text)
+                JobCenter.shared.finish(success: true)
             } catch is CancellationError {
                 guard self.token === token else { return }
                 self.token = nil
@@ -302,6 +317,7 @@ final class BackupsModel: ObservableObject {
                 self.progress = nil
                 UIApplication.shared.isIdleTimerDisabled = false
                 self.alert = .error("恢复已取消。")
+                JobCenter.shared.finish(success: false)
             } catch {
                 guard self.token === token else { return }
                 self.token = nil
@@ -309,6 +325,7 @@ final class BackupsModel: ObservableObject {
                 self.progress = nil
                 UIApplication.shared.isIdleTimerDisabled = false
                 self.alert = .error(error.localizedDescription)
+                JobCenter.shared.finish(success: false)
             }
         }
     }
@@ -320,6 +337,9 @@ final class BackupsModel: ObservableObject {
         let token = CancelToken()
         self.token = token
         UIApplication.shared.isIdleTimerDisabled = true
+        JobCenter.shared.begin(title: "打包 \(record.name)",
+                               subtitle: "正在打包…",
+                               token: token)
 
         Task {
             let url = await Task.detached(priority: .userInitiated) {
@@ -332,8 +352,10 @@ final class BackupsModel: ObservableObject {
             self.busyLabel = nil
             if let url {
                 self.exportFile = BackupExportFile(url: url)
+                JobCenter.shared.finish(success: true)
             } else {
                 self.alert = .error("导出失败。")
+                JobCenter.shared.finish(success: false)
             }
         }
     }
@@ -353,6 +375,9 @@ final class BackupsModel: ObservableObject {
         let token = CancelToken()
         self.token = token
         UIApplication.shared.isIdleTimerDisabled = true
+        JobCenter.shared.begin(title: "打包全部备份",
+                               subtitle: "正在打包…",
+                               token: token)
 
         Task {
             let url = await Task.detached(priority: .userInitiated) {
@@ -365,8 +390,10 @@ final class BackupsModel: ObservableObject {
             self.busyLabel = nil
             if let url {
                 self.exportFile = BackupExportFile(url: url)
+                JobCenter.shared.finish(success: true)
             } else {
                 self.alert = .error("导出全部备份失败。")
+                JobCenter.shared.finish(success: false)
             }
         }
     }
@@ -383,6 +410,10 @@ final class BackupsModel: ObservableObject {
         guard finished || Date().timeIntervalSince(lastProgressAt) > 0.1 else { return }
         lastProgressAt = Date()
         progress = value
+        JobCenter.shared.update(phase: value.phase,
+                                completed: value.bytes,
+                                total: value.totalBytes,
+                                detail: "\(value.files) 个文件")
     }
 }
 

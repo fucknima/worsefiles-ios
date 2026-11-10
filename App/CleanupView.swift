@@ -117,6 +117,10 @@ final class CleanupModel: ObservableObject {
         let mode = mode
         let token = CancelToken()
         self.token = token
+        JobCenter.shared.begin(title: "扫描缓存",
+                               subtitle: "准备…",
+                               token: token,
+                               total: Int64(containers.count))
 
         Task {
             let result = await Task.detached(priority: .userInitiated) {
@@ -140,6 +144,7 @@ final class CleanupModel: ObservableObject {
                 .compactMap { $0.identifier })
             AppIconStore.shared.prefetch(result.targets.compactMap { self.iconIdentifier(for: $0) })
             Log.info("cleanup scan \(mode.rawValue): targets=\(result.targets.count) identified=\(result.targets.filter { $0.identifier != nil }.count) apps=\(self.appIdentifiers.count)")
+            JobCenter.shared.finish(success: !token.isCancelled)
         }
     }
 
@@ -197,6 +202,10 @@ final class CleanupModel: ObservableObject {
             || Date().timeIntervalSince(lastProgressAt) > 0.12 else { return }
         lastProgressAt = Date()
         progress = value
+        JobCenter.shared.update(phase: value.phase,
+                                completed: Int64(value.done),
+                                total: Int64(value.total),
+                                detail: value.current)
     }
 
     private func containerList() -> [CleanupContainer] {

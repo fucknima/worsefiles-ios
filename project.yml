@@ -16,6 +16,8 @@ targets:
   WorseFiles:
     type: application
     platform: iOS
+    dependencies:
+      - sdk: BackgroundTasks.framework
     sources:
       - path: App
         excludes:

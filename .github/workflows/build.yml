@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   ipa:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +24,12 @@ jobs:
         run: brew install xcodegen
 
       - name: toolchain
-        run: xcodebuild -version
+        run: |
+          CANDIDATE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$CANDIDATE" ]; then
+            sudo xcode-select -s "$CANDIDATE"
+          fi
+          xcodebuild -version
 
       - name: build
         shell: bash
