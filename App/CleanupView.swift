@@ -41,6 +41,7 @@ final class CleanupModel: ObservableObject {
     @Published var alert: CleanupAlert?
     @Published var selected: Set<String> = []
     @Published private(set) var lastResult: CleanupReport?
+    @Published private(set) var appIdentifiers: Set<String> = []
     @Published var includeDaemons: Bool = AppSettings.cleanupIncludesDaemons {
         didSet {
             guard oldValue != includeDaemons else { return }
@@ -60,6 +61,22 @@ final class CleanupModel: ObservableObject {
     }
     var selectedBytes: Int64 { selectedTargets.reduce(0) { $0 + $1.bytes } }
     var canClean: Bool { !isBusy && selectedBytes > 0 }
+
+    // App data containers own the icon. A plugin container's identifier is
+    // its own bundle id; walk up until it matches an installed app's data
+    // container so the row shows the parent app icon instead of a box.
+    func iconIdentifier(for target: CleanupTarget) -> String? {
+        guard let identifier = target.identifier ?? Catalog.shared.label(for: target.containerPath) else {
+            return nil
+        }
+        if appIdentifiers.contains(identifier) { return identifier }
+        var candidate = identifier
+        while let dot = candidate.lastIndex(of: ".") {
+            candidate = String(candidate[..<dot])
+            if appIdentifiers.contains(candidate) { return candidate }
+        }
+        return identifier
+    }
 
     func toggle(_ target: CleanupTarget) {
         if selected.contains(target.id) {
@@ -119,7 +136,10 @@ final class CleanupModel: ObservableObject {
             self.selected = Set(result.targets.map { $0.id })
             self.phase = .idle
             self.progress = nil
-            AppIconStore.shared.prefetch(result.targets.compactMap { $0.identifier })
+            self.appIdentifiers = Set(Catalog.shared.items(for: Roots.dataApplication.path)
+                .compactMap { $0.identifier })
+            AppIconStore.shared.prefetch(result.targets.compactMap { self.iconIdentifier(for: $0) })
+            Log.info("cleanup scan \(mode.rawValue): targets=\(result.targets.count) identified=\(result.targets.filter { $0.identifier != nil }.count) apps=\(self.appIdentifiers.count)")
         }
     }
 
@@ -196,7 +216,6 @@ final class CleanupModel: ObservableObject {
 
 struct CleanupView: View {
     @StateObject private var model = CleanupModel()
-    @ObservedObject private var icons = AppIconStore.shared
 
     var body: some View {
         List {
@@ -385,14 +404,8 @@ struct CleanupView: View {
                 .font(.system(size: 19))
                 .foregroundStyle(model.selected.contains(target.id) ? Color.accentColor : Color.secondary.opacity(0.55))
 
-            if let identifier = target.identifier,
-               let data = icons.icon(for: identifier),
-               let image = UIImage(data: data) {
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 34, height: 34)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            if let identifier = model.iconIdentifier(for: target) {
+                CleanupIconView(identifier: identifier)
             } else {
                 Image(systemName: "shippingbox.fill")
                     .font(.system(size: 16, weight: .semibold))
@@ -421,4 +434,42 @@ struct CleanupView: View {
         }
     }
 
+}
+
+// A row owns its icon update so a background fetch always refreshes that
+// row, even when the surrounding list is busy with selection changes.
+private struct CleanupIconView: View {
+    let identifier: String
+
+    @ObservedObject private var icons = AppIconStore.shared
+    @State private var data: Data?
+
+    var body: some View {
+        Group {
+            if let data, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 34, height: 34)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                Image(systemName: "shippingbox.fill")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.teal)
+                    .frame(width: 34, height: 34)
+                    .background(Color.teal.opacity(0.14),
+                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+        .onAppear { load() }
+        .onChange(of: icons.revision) { _, _ in load() }
+    }
+
+    private func load() {
+        if let cached = icons.cachedIcon(for: identifier) {
+            if cached != data { data = cached }
+        } else {
+            _ = icons.icon(for: identifier)
+        }
+    }
 }

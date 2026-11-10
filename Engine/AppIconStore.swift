@@ -17,6 +17,9 @@ final class AppIconStore: ObservableObject {
 
     // Bumped after an icon lands; the browser re-reads the cached data.
     @Published private(set) var revision = 0
+    private(set) var missCount = 0
+
+    var cachedCount: Int { memory.count }
 
     private var memory: [String: Data] = [:]
     private var pending: Set<String> = []
@@ -97,7 +100,10 @@ final class AppIconStore: ObservableObject {
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.pending.remove(identifier)
-                guard let data else { return }
+                guard let data else {
+                    self.missCount += 1
+                    return
+                }
                 self.memory[identifier] = data
                 self.revision += 1
             }
@@ -106,19 +112,21 @@ final class AppIconStore: ObservableObject {
 
     nonisolated private static func fetchIcon(_ identifier: String, bundlePath: String?) -> Data? {
         if let data = WFAppIconData(identifier) { return data }
-        if let bundlePath, let data = bundleIcon(bundlePath) { return data }
-        if let path = InstalledApps.bundlePath(for: identifier),
-           let data = bundleIcon(path) {
-            return data
-        }
 
         // A plugin or daemon often has no proxy of its own. Walk up the
-        // reverse-DNS identifier until an installed app answers.
+        // reverse-DNS identifier until an installed app answers. Try this
+        // before bundle reads, which are usually refused on iOS 27.
         var candidate = identifier
         while let dot = candidate.lastIndex(of: ".") {
             candidate = String(candidate[..<dot])
             guard candidate.contains(".") else { break }
             if let data = WFAppIconData(candidate) { return data }
+        }
+
+        if let bundlePath, let data = bundleIcon(bundlePath) { return data }
+        if let path = InstalledApps.bundlePath(for: identifier),
+           let data = bundleIcon(path) {
+            return data
         }
         return nil
     }
