@@ -762,7 +762,6 @@ enum BackupSupport {
 
     private static func xattrLookup(_ identifier: String) -> String? {
         let broker = SandboxBroker.shared
-        let manager = FileManager.default
         for root in [Roots.dataApplication, Roots.pluginKit] {
             var lease: String?
             if (try? broker.access(root.path, quiet: true)) != nil {
@@ -771,11 +770,21 @@ enum BackupSupport {
             defer {
                 if let lease { broker.release(lease, quiet: true) }
             }
-            guard let names = try? manager.contentsOfDirectory(atPath: root.path) else { continue }
-            for name in names where !name.hasPrefix(".") {
-                let path = root.path + "/" + name
-                if ContainerMetadata.identifier(atPath: path) == identifier {
-                    return path
+            if let names = try? manager.contentsOfDirectory(atPath: root.path) {
+                for name in names where !name.hasPrefix(".") {
+                    let path = root.path + "/" + name
+                    if ContainerMetadata.identifier(atPath: path) == identifier {
+                        return path
+                    }
+                }
+            }
+            // Listing a container root is often refused on iOS 27, but the
+            // inode index already holds the paths. Re-read their xattrs.
+            if let record = Catalog.shared.scanRecord(for: root.path) {
+                for path in record.paths {
+                    if ContainerMetadata.identifier(atPath: path) == identifier {
+                        return path
+                    }
                 }
             }
         }

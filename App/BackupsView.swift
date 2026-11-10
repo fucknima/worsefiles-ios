@@ -242,11 +242,19 @@ final class BackupsModel: ObservableObject {
 
     func beginRestore(_ record: BackupRecord) {
         guard !isBusy else { return }
-        guard let target = BackupSupport.restoreTarget(for: record) else {
-            alert = .error("找不到备份对应的容器。App 可能已卸载。")
-            return
+        busyLabel = "定位容器…"
+        progress = nil
+        Task {
+            // Pick up a container created by a reinstall before resolving the
+            // path. Incremental unless the index has never been built.
+            _ = try? await ContainerIndex.shared.ensureScanned(full: false)
+            busyLabel = nil
+            guard let target = BackupSupport.restoreTarget(for: record) else {
+                alert = .error("找不到备份对应的容器。App 可能已卸载。")
+                return
+            }
+            alert = .restore(record, target)
         }
-        alert = .restore(record, target)
     }
 
     func restore(_ record: BackupRecord, target: String, snapshot: Bool) {
@@ -365,6 +373,9 @@ final class BackupsModel: ObservableObject {
 
     func cancel() {
         token?.cancel()
+        if busyLabel == "定位容器…" {
+            ContainerIndex.shared.cancel()
+        }
     }
 
     private func receive(_ value: BackupProgress) {
