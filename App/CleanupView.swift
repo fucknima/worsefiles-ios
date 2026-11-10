@@ -453,12 +453,15 @@ private struct CleanupIconView: View {
                     .frame(width: 34, height: 34)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
-                Image(systemName: "shippingbox.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.teal)
-                    .frame(width: 34, height: 34)
-                    .background(Color.teal.opacity(0.14),
-                                in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                let style = ServiceGlyph.style(for: identifier)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(style.color.gradient)
+                        .frame(width: 34, height: 34)
+                    Image(systemName: style.symbol)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
             }
         }
         .onAppear { load() }
@@ -466,8 +469,8 @@ private struct CleanupIconView: View {
     }
 
     private func load() {
-        if let cached = icons.cachedIcon(for: identifier) {
-            if cached != data { data = cached }
+        if let data = icons.iconNow(for: identifier) {
+            if data != self.data { self.data = data }
         } else {
             _ = icons.icon(for: identifier)
         }

@@ -20,15 +20,7 @@ struct FileGlyph: View {
                     .frame(width: 36, height: 36)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else if let identifier = item.identifier, item.isDirectory {
-                let style = ServiceGlyph.style(for: identifier)
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(style.color.gradient)
-                        .frame(width: 36, height: 36)
-                    Image(systemName: style.symbol)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.white)
-                }
+                AppIconTile(identifier: identifier)
             } else {
                 let style = FileGlyph.style(for: item)
                 ZStack {
@@ -72,8 +64,46 @@ struct FileGlyph: View {
     }
 }
 
-enum ServiceGlyph {
-    private static let rules: [(words: [String], symbol: String, color: Color)] = [
+private struct AppIconTile: View {
+    let identifier: String
+
+    @ObservedObject private var icons = AppIconStore.shared
+    @State private var data: Data?
+
+    var body: some View {
+        Group {
+            if let data, let image = UIImage(data: data) {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 36, height: 36)
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            } else {
+                let style = ServiceGlyph.style(for: identifier)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .fill(style.color.gradient)
+                        .frame(width: 36, height: 36)
+                    Image(systemName: style.symbol)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .onAppear { load() }
+        .onChange(of: icons.revision) { _, _ in load() }
+    }
+
+    private func load() {
+        if let data = icons.iconNow(for: identifier) {
+            if data != self.data { self.data = data }
+        } else {
+            _ = icons.icon(for: identifier)
+        }
+    }
+}
+
+enum ServiceGlyph {    private static let rules: [(words: [String], symbol: String, color: Color)] = [
         (["emoji"], "face.smiling.inverse", .orange),
         (["keyboard", "inputui", "textinput", "dictation"], "keyboard.fill", .gray),
         (["airdrop", "sharing", "sharesheet"], "antenna.radiowaves.left.and.right", .blue),

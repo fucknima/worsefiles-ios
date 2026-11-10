@@ -42,6 +42,10 @@ FOUNDATION_EXPORT NSData * _Nullable WFBundleIconData(NSString *bundlePath);
 // callers fall back to the parent app's icon.
 FOUNDATION_EXPORT NSData * _Nullable WFAppIconData(NSString *identifier);
 
+// Synchronous UIKit-only path, mirroring WQ Files: call on the main thread,
+// no proxy and no bundle access, so a visible row can draw immediately.
+FOUNDATION_EXPORT NSData * _Nullable WFQuickIconData(NSString *identifier);
+
 // Human-readable icon resolution details for the diagnostics screen.
 FOUNDATION_EXPORT NSString *WFIconReport(NSString *identifier);
 

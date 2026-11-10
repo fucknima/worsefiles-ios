@@ -57,6 +57,35 @@ final class AppIconStore: ObservableObject {
         return nil
     }
 
+    // WQ Files draws the icon while configuring the cell. Do the same here:
+    // UIKit alone, on the main thread, no proxy or bundle reads. This is what
+    // makes a visible row show the real icon immediately instead of waiting
+    // behind a serial background queue.
+    func iconNow(for identifier: String) -> Data? {
+        if let data = cachedIcon(for: identifier) { return data }
+        guard let data = Self.quickIcon(identifier) else { return nil }
+        memory[identifier] = data
+        if let directory {
+            let fileURL = directory.appendingPathComponent(Self.fileName(identifier))
+            queue.async {
+                try? data.write(to: fileURL, options: .atomic)
+            }
+        }
+        return data
+    }
+
+    nonisolated private static func quickIcon(_ identifier: String) -> Data? {
+        if let data = WFQuickIconData(identifier) { return data }
+        // Extensions and services: closest parent that UIKit knows.
+        var candidate = identifier
+        while let dot = candidate.lastIndex(of: ".") {
+            candidate = String(candidate[..<dot])
+            guard candidate.contains(".") else { break }
+            if let data = WFQuickIconData(candidate) { return data }
+        }
+        return nil
+    }
+
     func prefetch(_ identifiers: [String], limit: Int = 80) {
         var seen = Set<String>()
         var count = 0

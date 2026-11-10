@@ -299,27 +299,12 @@ static BOOL WFIconMatchesPlaceholder(UIImage *raw, NSData *placeholder) {
     return difference / fingerprint.length < 8;
 }
 
-static NSData *WFUIKitIconPNG(NSString *identifier) {
-    static NSMutableDictionary<NSNumber *, NSData *> *placeholders;
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{
-        placeholders = [NSMutableDictionary dictionary];
-    });
+static NSData *WFQuickIconPNG(NSString *identifier);
 
-    for (NSNumber *variant in @[@2, @0, @1, @3]) {
-        NSData *placeholder = placeholders[variant];
-        if (!placeholder) {
-            UIImage *none = WFRawUIKitIcon(@"cz.kolbi.wqfiles.no-such-app", variant.intValue);
-            placeholder = WFIconFingerprint(none) ?: [NSData data];
-            placeholders[variant] = placeholder;
-        }
-        UIImage *raw = WFRawUIKitIcon(identifier, variant.intValue);
-        if (!raw || !raw.CGImage) continue;
-        if (WFIconMatchesPlaceholder(raw, placeholder)) continue;
-        NSData *png = WFIconPNGFromImage(raw);
-        if (png.length > 0) return png;
-    }
-    return nil;
+// Same as the quick path: WQ Files uses format 2 only. Rotating through
+// other formats can return a different rendering or another app's glyph.
+static NSData *WFUIKitIconPNG(NSString *identifier) {
+    return WFQuickIconPNG(identifier);
 }
 
 static NSData *WFProxyIconPNG(NSString *identifier) {
@@ -331,7 +316,7 @@ static NSData *WFProxyIconPNG(NSString *identifier) {
 
     SEL iconSelector = NSSelectorFromString(@"iconDataForVariant:");
     if (![proxy respondsToSelector:iconSelector]) return nil;
-    for (NSNumber *variant in @[@2, @0, @1, @3]) {
+    for (NSNumber *variant in @[@2]) {
         id data = ((id (*)(id, SEL, int))objc_msgSend)(proxy, iconSelector, variant.intValue);
         if (![data isKindOfClass:NSData.class] || [data length] == 0) continue;
         UIImage *image = [UIImage imageWithData:data];
@@ -384,6 +369,35 @@ NSData *WFBundleIconData(NSString *bundlePath) {
         }
     }
     return nil;
+}
+
+// WQ Files uses format 2 only. Other formats can be a different rendering
+// (or another app's glyph), so the quick path must not rotate through them.
+static NSData *WFQuickIconPNG(NSString *identifier) {
+    static NSData *placeholder;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        UIImage *none = WFRawUIKitIcon(@"cz.kolbi.wqfiles.no-such-app", 2);
+        placeholder = WFIconFingerprint(none) ?: [NSData data];
+    });
+    UIImage *raw = WFRawUIKitIcon(identifier, 2);
+    if (!raw || !raw.CGImage) return nil;
+    if (WFIconMatchesPlaceholder(raw, placeholder)) return nil;
+    return WFIconPNGFromImage(raw);
+}
+
+NSData *WFQuickIconData(NSString *identifier) {
+    if (identifier.length == 0) return nil;
+    __block NSData *result = nil;
+    void (^work)(void) = ^{
+        result = WFQuickIconPNG(identifier);
+    };
+    if (NSThread.isMainThread) {
+        work();
+    } else {
+        dispatch_sync(dispatch_get_main_queue(), work);
+    }
+    return result;
 }
 
 NSData *WFAppIconData(NSString *identifier) {
