@@ -30,8 +30,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.kestrel.worsefiles
         PRODUCT_NAME: WorseFiles
-        MARKETING_VERSION: "1.0.9"
-        CURRENT_PROJECT_VERSION: "27"
+        MARKETING_VERSION: "1.0.10"
+        CURRENT_PROJECT_VERSION: "28"
         INFOPLIST_FILE: App/Info.plist
         CODE_SIGN_ENTITLEMENTS: App/WorseFiles.entitlements
         SWIFT_OBJC_BRIDGING_HEADER: Bridge/WorseFiles-Bridging-Header.h
