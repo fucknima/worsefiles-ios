@@ -237,6 +237,17 @@ struct DiagnosticsContent: View {
         detail.append("应用列表：\(index.installedListAvailable ? "可用" : "不可用")")
         detail.append("图标缓存：\(AppIconStore.shared.cachedCount) 个，失败 \(AppIconStore.shared.missCount) 次")
         detail.append("后台继续：\(JobCenter.shared.diagnostic)")
+        let appCounts = AppCatalog.shared.dataRootCounts()
+        detail.append("应用分组：用户 \(appCounts[.user] ?? 0) / 系统 \(appCounts[.system] ?? 0) / 服务 \(appCounts[.service] ?? 0)")
+        let appPaths = Catalog.shared.scanRecord(for: Roots.dataApplication.path)?.paths ?? []
+        for kind in [AppDataKind.user, .system, .service] {
+            let samples = appPaths.filter { AppCatalog.shared.kind(forContainerPath: $0) == kind }.prefix(2)
+            for path in samples {
+                let identifier = AppCatalog.shared.identifier(forContainerPath: path) ?? "?"
+                let bundle = AppCatalog.shared.bundlePath(for: identifier) ?? "nil"
+                detail.append(" \(kind.rawValue) \(identifier) → \(bundle)")
+            }
+        }
         detail.append("上次同步：\(Format.date(index.lastReconciled))")
         lines = detail
         logText = Log.tail

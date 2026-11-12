@@ -82,6 +82,8 @@ final class AppCatalog: ObservableObject {
     private var containerBundleIDs: [String: String] = [:]
     private var bundlePaths: [String: String] = [:]
 
+    var hasMaps: Bool { !containerBundleIDs.isEmpty || !bundlePaths.isEmpty }
+
     private init() {}
 
     func setMaps(containerBundleIDs: [String: String], bundlePaths: [String: String]) {

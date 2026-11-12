@@ -323,7 +323,7 @@ final class BrowserModel: ObservableObject {
     }
 
     private func scoped(_ listed: [FSItem]) -> [FSItem] {
-        guard isAppRoot, appScope != .all else { return listed }
+        guard isAppRoot, appScope != .all, AppCatalog.shared.hasMaps else { return listed }
         return listed.filter { appScope.contains(AppCatalog.shared.kind(forContainerPath: $0.path)) }
     }
 
@@ -344,7 +344,7 @@ final class BrowserModel: ObservableObject {
     }
 
     var appSections: [AppDataSection] {
-        guard isAppRoot, appScope == .all else { return [] }
+        guard isAppRoot, appScope == .all, AppCatalog.shared.hasMaps else { return [] }
         return AppDataKind.allCases.compactMap { kind in
             let part = visibleItems.filter {
                 AppCatalog.shared.kind(forContainerPath: $0.path) == kind

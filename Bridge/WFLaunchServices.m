@@ -36,7 +36,8 @@ static NSArray<NSString *> *wq_list(NSString *path, NSString **error) {
     return items;
 }
 
-static NSArray<NSString *> *wq_enumerate(NSString *path, int64_t from, int64_t to, void *progressBlock) {
+static NSArray<NSString *> *wq_enumerate(NSString *path, int64_t maxInode, id cancellation,
+                                          void (^progress)(int64_t done, int64_t total, NSUInteger found)) {
     return nil;
 }
 

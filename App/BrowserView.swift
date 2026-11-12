@@ -219,6 +219,7 @@ struct BrowserView: View {
     }
 
     private var scopeCounts: String {
+        guard appCatalog.hasMaps else { return "正在读取应用分类…" }
         let counts = appCatalog.dataRootCounts()
         let user = counts[.user] ?? 0
         let system = counts[.system] ?? 0

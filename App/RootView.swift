@@ -320,7 +320,8 @@ struct RootView: View {
     }
 
     private func countDetail(for root: RootSpec) -> String? {
-        if PathTool.canonical(root.path) == PathTool.canonical(Roots.dataApplication.path) {
+        if PathTool.canonical(root.path) == PathTool.canonical(Roots.dataApplication.path),
+           appCatalog.hasMaps {
             let counts = appCatalog.dataRootCounts()
             let user = counts[.user] ?? 0
             let system = counts[.system] ?? 0
