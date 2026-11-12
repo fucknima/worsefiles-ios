@@ -47,7 +47,8 @@ final class AppNames: ObservableObject {
     }
 
     func ensureLoaded(daemonContainers: [String]) {
-        guard !loaded, !loading, !daemonContainers.isEmpty else { return }
+        guard !loading, !daemonContainers.isEmpty else { return }
+        if loaded, AppCatalog.shared.hasMaps { return }
         loading = true
         let containers = daemonContainers
 
@@ -66,7 +67,12 @@ final class AppNames: ObservableObject {
                 let bundleNames = snapshot["bundleNames"] as? [String: String] ?? [:]
                 containersByPath = snapshot["containers"] as? [String: String] ?? [:]
                 bundlePaths = snapshot["bundlePaths"] as? [String: String] ?? [:]
-                found = bundleNames.merging(display) { _, displayName in displayName }
+                var merged = bundleNames
+                for (identifier, name) in display {
+                    if let old = merged[identifier], Self.hasCJK(old), !Self.hasCJK(name) { continue }
+                    merged[identifier] = name
+                }
+                found = merged
                 if !found.isEmpty { break }
             }
 
@@ -142,6 +148,12 @@ final class AppNames: ObservableObject {
                     self.publish()
                 }
             }
+        }
+    }
+
+    private static func hasCJK(_ string: String) -> Bool {
+        string.unicodeScalars.contains { scalar in
+            scalar.value >= 0x4E00 && scalar.value <= 0x9FFF
         }
     }
 

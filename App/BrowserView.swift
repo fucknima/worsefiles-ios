@@ -236,7 +236,11 @@ struct BrowserView: View {
         } else if !model.query.isEmpty {
             EmptyDirectoryView(symbol: "magnifyingglass",
                                title: "没有匹配项",
-                               message: "当前目录里没有名称包含“\(model.query)”的项目。")
+                               message: "当前范围里没有名称包含“\(model.query)”的项目。")
+        } else if model.isAppRoot && model.appScope != .all {
+            EmptyDirectoryView(symbol: "square.stack.3d.up",
+                               title: "该范围内没有 App",
+                               message: "切到“全部”可以看到服务与扩展容器，或下拉刷新重新分类。")
         } else if model.isRootContainer {
             EmptyDirectoryView(symbol: "shippingbox",
                                title: "没有容器",

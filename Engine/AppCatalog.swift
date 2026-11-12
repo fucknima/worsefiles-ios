@@ -132,7 +132,7 @@ final class AppCatalog: ObservableObject {
     }
 
     private static func classify(identifier: String, bundlePath: String?) -> AppDataKind {
-        guard let raw = bundlePath, !raw.isEmpty else { return .service }
+        guard let raw = bundlePath, !raw.isEmpty else { return approximate(identifier) }
         var path = raw
         if path.hasSuffix("/") { path.removeLast() }
         guard path.hasSuffix(".app"), !path.contains(".app/") else { return .service }
@@ -151,5 +151,18 @@ final class AppCatalog: ObservableObject {
         }
         // A top-level .app outside the known roots is an Apple internal app.
         return identifier.hasPrefix("com.apple.") ? .system : .user
+    }
+
+    // When the store maps a container but not its bundle, prefer showing a
+    // third-party app over hiding it as a service. Apple ids and obvious
+    // extension names stay services; everything else is an approximate user.
+    private static func approximate(_ identifier: String) -> AppDataKind {
+        if identifier.hasPrefix("com.apple.") { return .service }
+        let lower = identifier.lowercased()
+        let serviceWords = [".appex", ".extension", ".widget", ".keyboard", ".share",
+                            ".service", ".plugin", ".notification", ".intent", ".siri",
+                            "remoteuiservice", "proxyservice", "spotlight"]
+        if serviceWords.contains(where: { lower.contains($0) }) { return .service }
+        return .user
     }
 }

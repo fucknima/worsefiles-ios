@@ -367,6 +367,9 @@ final class BrowserModel: ObservableObject {
     }
 
     func namesUpdated() {
+        if isAppRoot {
+            allItems = decorate(allItems)
+        }
         let decorated = decorate(items)
         if decorated != items { items = decorated }
         prefetchIcons()
