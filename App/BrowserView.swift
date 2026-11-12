@@ -25,6 +25,10 @@ struct BrowserView: View {
     var body: some View {
         VStack(spacing: 0) {
             BreadcrumbBar(currentPath: model.path, currentTitle: model.title)
+            if model.isAppRoot {
+                AppScopeBar(scope: $model.appScope, counts: scopeCounts)
+                Divider()
+            }
             content
         }
         .navigationTitle(model.title)
@@ -156,22 +160,6 @@ struct BrowserView: View {
                     LabelProgressView(progress: progress) {
                         model.stopLabelResolution()
                     }
-                }
-            }
-
-            if model.isAppRoot {
-                Section {
-                    Picker("范围", selection: $model.appScope) {
-                        ForEach(AppDataScope.allCases) { scope in
-                            Text(scope.title).tag(scope)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
-                } header: {
-                    Text("应用范围")
-                } footer: {
-                    Text(scopeCounts)
                 }
             }
 
@@ -664,6 +652,35 @@ struct BrowserView: View {
         if item.isSymbolicLink { pieces.append("符号链接") }
         if let modified = item.modified { pieces.append(Format.date(modified)) }
         return pieces.joined(separator: " · ")
+    }
+}
+
+// MARK: - App scope
+
+private struct AppScopeBar: View {
+    @Binding var scope: AppDataScope
+    let counts: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            Picker("范围", selection: $scope) {
+                ForEach(AppDataScope.allCases) { value in
+                    Text(value.title).tag(value)
+                }
+            }
+            .pickerStyle(.segmented)
+
+            HStack {
+                Text(counts)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color(uiColor: .secondarySystemGroupedBackground))
     }
 }
 
