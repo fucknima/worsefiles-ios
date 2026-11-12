@@ -54,20 +54,28 @@ final class AppNames: ObservableObject {
         Task.detached(priority: .utility) {
             let broker = SandboxBroker.shared
             var found: [String: String] = [:]
+            var containersByPath: [String: String] = [:]
+            var bundlePaths: [String: String] = [:]
 
             for container in containers {
                 guard (try? broker.access(container, quiet: true)) != nil else { continue }
                 defer { broker.release(container, quiet: true) }
-                if let names = WFLaunchServicesNames(container) as? [String: String],
-                   !names.isEmpty {
-                    found = names
-                    break
-                }
+                guard WFLaunchCatalogLoadFromContainer(container) else { continue }
+                let snapshot = WFLaunchCatalogSnapshot()
+                let display = snapshot["displayNames"] as? [String: String] ?? [:]
+                let bundleNames = snapshot["bundleNames"] as? [String: String] ?? [:]
+                containersByPath = snapshot["containers"] as? [String: String] ?? [:]
+                bundlePaths = snapshot["bundlePaths"] as? [String: String] ?? [:]
+                found = bundleNames.merging(display) { _, displayName in displayName }
+                if !found.isEmpty { break }
             }
 
             let result = found
+            let paths = containersByPath
+            let bundles = bundlePaths
             await MainActor.run {
                 self.loading = false
+                AppCatalog.shared.setMaps(containerBundleIDs: paths, bundlePaths: bundles)
                 guard !result.isEmpty else { return }
                 self.database = result
                 self.databaseCount = result.count

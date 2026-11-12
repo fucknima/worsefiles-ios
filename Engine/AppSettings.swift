@@ -15,6 +15,7 @@ enum SettingsKey {
     static let cleanupIncludesDaemons = "cleanupIncludesDaemons"
     static let restoreSnapshot = "restoreSnapshot"
     static let hasSeenIntro = "hasSeenIntro"
+    static let appDataScope = "appDataScope"
 }
 
 enum AppSettings {
@@ -55,6 +56,14 @@ enum AppSettings {
     static var hasSeenIntro: Bool {
         get { UserDefaults.standard.bool(forKey: SettingsKey.hasSeenIntro) }
         set { UserDefaults.standard.set(newValue, forKey: SettingsKey.hasSeenIntro) }
+    }
+
+    static var appDataScope: AppDataScope {
+        get {
+            let raw = UserDefaults.standard.string(forKey: SettingsKey.appDataScope) ?? ""
+            return AppDataScope(rawValue: raw) ?? .user
+        }
+        set { UserDefaults.standard.set(newValue.rawValue, forKey: SettingsKey.appDataScope) }
     }
 
     static var foldersFirst: Bool {

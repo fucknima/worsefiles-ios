@@ -11,6 +11,7 @@
 #include "pathleak.h"
 #import "WFAppGroups.h"
 #import "WFInstalledApps.h"
+#import "WFLaunchServices.h"
 #import "WFClone.h"
 #import "WQNames.h"
 

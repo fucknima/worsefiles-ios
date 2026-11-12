@@ -14,6 +14,7 @@ struct BrowserView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var index = ContainerIndex.shared
     @ObservedObject private var icons = AppIconStore.shared
+    @ObservedObject private var appCatalog = AppCatalog.shared
     @StateObject private var model: BrowserModel
     @State private var backupRequest: BackupRequest?
 
@@ -73,6 +74,9 @@ struct BrowserView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .worseFilesNamesUpdated)) { _ in
             model.namesUpdated()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .worseFilesAppCatalogUpdated)) { _ in
+            model.catalogUpdated()
         }
         .alert("操作失败", isPresented: errorBinding) {
             Button("好", role: .cancel) {}
@@ -155,15 +159,41 @@ struct BrowserView: View {
                 }
             }
 
-            Section {
-                if model.visibleItems.isEmpty {
-                    emptyRow
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                } else {
-                    ForEach(model.visibleItems) { item in
-                        row(item)
-                            .listRowBackground(rowBackground(item))
+            if model.isAppRoot {
+                Section {
+                    Picker("范围", selection: $model.appScope) {
+                        ForEach(AppDataScope.allCases) { scope in
+                            Text(scope.title).tag(scope)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 12))
+                } header: {
+                    Text("应用范围")
+                } footer: {
+                    Text(scopeCounts)
+                }
+            }
+
+            if model.appSections.isEmpty {
+                Section {
+                    rows
+                }
+            } else {
+                ForEach(model.appSections, id: \.kind) { group in
+                    Section {
+                        ForEach(group.items) { item in
+                            row(item)
+                                .listRowBackground(rowBackground(item))
+                        }
+                    } header: {
+                        HStack {
+                            Text(group.kind.title)
+                            Spacer()
+                            Text("\(group.items.count)")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -172,6 +202,28 @@ struct BrowserView: View {
         .refreshable {
             await model.refresh()
         }
+    }
+
+    @ViewBuilder
+    private var rows: some View {
+        if model.visibleItems.isEmpty {
+            emptyRow
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+        } else {
+            ForEach(model.visibleItems) { item in
+                row(item)
+                    .listRowBackground(rowBackground(item))
+            }
+        }
+    }
+
+    private var scopeCounts: String {
+        let counts = appCatalog.dataRootCounts()
+        let user = counts[.user] ?? 0
+        let system = counts[.system] ?? 0
+        let service = counts[.service] ?? 0
+        return "用户 \(user) · 系统 \(system) · 服务 \(service)"
     }
 
     @ViewBuilder

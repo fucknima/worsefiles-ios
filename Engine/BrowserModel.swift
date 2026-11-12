@@ -65,8 +65,16 @@ final class BrowserModel: ObservableObject {
     @Published var showHidden: Bool
     @Published var confirmDelete = false
     @Published var pendingDelete: [FSItem] = []
+    @Published var appScope: AppDataScope {
+        didSet {
+            guard oldValue != appScope else { return }
+            AppSettings.appDataScope = appScope
+            applyScope()
+        }
+    }
 
     private let catalog = Catalog.shared
+    private var allItems: [FSItem] = []
     private var started = false
     private var loadGeneration = 0
     private var rootUsesIndex = false
@@ -86,6 +94,7 @@ final class BrowserModel: ObservableObject {
         }
         sortOrder = AppSettings.sortOrder
         showHidden = AppSettings.showHidden
+        appScope = AppSettings.appDataScope
     }
 
     // MARK: - Derived
@@ -105,6 +114,8 @@ final class BrowserModel: ObservableObject {
     }
 
     var isRootContainer: Bool { Roots.spec(for: path) != nil }
+
+    var isAppRoot: Bool { PathTool.canonical(Roots.dataApplication.path) == path }
 
     // MARK: - Lifecycle
 
@@ -299,14 +310,47 @@ final class BrowserModel: ObservableObject {
 
     private func applyItems(_ newItems: [FSItem]) {
         let decorated = decorate(newItems)
-        if decorated != items {
-            items = decorated
+        if isAppRoot { allItems = decorated }
+        let visible = isAppRoot ? scoped(decorated) : decorated
+        if visible != items {
+            items = visible
         }
-        let valid = Set(decorated.map { $0.path })
+        let valid = Set(visible.map { $0.path })
         selected.formIntersection(valid)
         attachIcons()
         prefetchIcons()
         AppNames.shared.enrich(items.compactMap { $0.identifier })
+    }
+
+    private func scoped(_ listed: [FSItem]) -> [FSItem] {
+        guard isAppRoot, appScope != .all else { return listed }
+        return listed.filter { appScope.contains(AppCatalog.shared.kind(forContainerPath: $0.path)) }
+    }
+
+    private func applyScope() {
+        guard isAppRoot else { return }
+        let visible = scoped(allItems)
+        items = visible
+        selected.formIntersection(Set(visible.map { $0.path }))
+        attachIcons()
+        prefetchIcons()
+    }
+
+    func catalogUpdated() {
+        guard isAppRoot else { return }
+        let decorated = decorate(allItems)
+        allItems = decorated
+        applyScope()
+    }
+
+    var appSections: [AppDataSection] {
+        guard isAppRoot, appScope == .all else { return [] }
+        return AppDataKind.allCases.compactMap { kind in
+            let part = visibleItems.filter {
+                AppCatalog.shared.kind(forContainerPath: $0.path) == kind
+            }
+            return part.isEmpty ? nil : AppDataSection(kind: kind, items: part)
+        }
     }
 
     private func decorate(_ list: [FSItem]) -> [FSItem] {

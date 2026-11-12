@@ -9,6 +9,7 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var app: AppModel
     @ObservedObject private var catalog = Catalog.shared
+    @ObservedObject private var appCatalog = AppCatalog.shared
     @State private var activeSheet: RootSheet?
     @AppStorage(SettingsKey.hasSeenIntro) private var hasSeenIntro = false
 
@@ -319,6 +320,14 @@ struct RootView: View {
     }
 
     private func countDetail(for root: RootSpec) -> String? {
+        if PathTool.canonical(root.path) == PathTool.canonical(Roots.dataApplication.path) {
+            let counts = appCatalog.dataRootCounts()
+            let user = counts[.user] ?? 0
+            let system = counts[.system] ?? 0
+            let service = counts[.service] ?? 0
+            guard user + system + service > 0 else { return nil }
+            return "用户 \(user) · 系统 \(system) · 服务 \(service)"
+        }
         let count = catalog.count(for: root.path)
         return count > 0 ? "\(count)" : nil
     }
