@@ -31,6 +31,7 @@
 - 应用数据/扩展/守护进程/系统组的父目录不可列举时，按 inode 扫描发现容器；一次扫描按文件系统分组遍历，同时匹配所有容器根路径，不会为每个入口重复全扫。
 - App 组和 iOS 27 系统路径优先直接列举父目录，失败时自动回退到 inode 扫描。
 - 读取容器的 `com.apple.containermanager.identifier` 与 `.com.apple.mobile_container_manager.metadata.plist`，把 UUID 行显示成 bundle identifier；扫描后默认自动解析，也可在菜单手动重试或停止。
+- 应用分组：从 LaunchServices CSStore 解析数据容器对应的顶层 `.app` 路径，把“应用数据”分成用户 App、系统 App、服务与扩展；默认只显示用户 App，顶部可切范围，“全部”里再按三类分 section。服务不会因为 `com.apple.` 前缀被误当成系统 App，扩展也不会混进用户列表。
 - 容器行显示 App 名称与图标：iOS 27 的 LaunchServices API 不可用，名称解析 lsd 的 CSStore 数据库，再尝试 App bundle 里的 zh-Hans InfoPlist.strings，内置 Apple App 名称表用中文兜底。图标先试 UIKit 私有方法，再试 LSApplicationProxy 图标，再读 Bundle 图标，最后用按 bundle id 关键词生成的占位图标；缓存到 Application Support。
 - 维护 → 清理缓存：安全模式只删 Library/Caches 与 tmp，标准模式再加日志、Saved Application State、SplashBoard；先按 App 汇总可释放空间，支持逐个勾选、全选/全不选、只看 50 MB/200 MB 以上，确认后删除并重建目录。清理完成后保留剩余列表，不用重新扫描。默认不含系统守护进程，需要单独开关。不含 Documents、App Group、系统容器。
 - 备份与恢复：容器或其中任意文件夹可备份到 Documents/Backups；manifest 记录容器 identifier 与容器内相对路径，App 重装换 UUID 后按 MCM 查询或 identifier xattr 找回新容器，不依赖先打开列表。恢复前默认自动快照目标目录，快照失败会中止恢复；恢复为同名覆盖。

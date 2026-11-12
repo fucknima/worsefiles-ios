@@ -40,7 +40,13 @@ License: GPL-3.0-or-later
 
 Bridge/WQNames.m is derived from WQAccess.m in WQ Files. It reads and parses
 lsd's CSStore LaunchServices database for app names; the built-in app name
-table is copied from the same file. Bridge/WFInstalledApps.m resolves app
+table is copied from the same file.
+
+Bridge/WFLaunchServices.m is adapted from WQLaunchServices.m in WQ Files
+(launch-services branch). It parses the same CSStore database for container
+paths and app bundle paths, which WorseFiles uses to separate user apps,
+system apps and service containers. The parser layouts and bounds checks are
+from the original; the WorseFiles access-layer glue was replaced. Bridge/WFInstalledApps.m resolves app
 icons through UIKit's private _applicationIconImageForBundleIdentifier method
 and rejects iOS's placeholder image using the fingerprint approach from
 WQ Files. The technique and parser were adapted, not copied verbatim.

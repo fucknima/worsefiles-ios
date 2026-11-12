@@ -137,6 +137,10 @@ final class AppCatalog: ObservableObject {
         if path.hasSuffix("/") { path.removeLast() }
         guard path.hasSuffix(".app"), !path.contains(".app/") else { return .service }
 
+        // Apple ids are system apps even when the bundle is in the user
+        // container (some built-ins are installed that way on iOS 27).
+        if identifier.hasPrefix("com.apple.") { return .system }
+
         if path.hasPrefix("/private/var/containers/Bundle/Application/")
             || path.hasPrefix("/var/containers/Bundle/Application/") {
             // Installed into the user bundle container, including Apple apps
