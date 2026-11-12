@@ -151,7 +151,7 @@ final class AppNames: ObservableObject {
         }
     }
 
-    private static func hasCJK(_ string: String) -> Bool {
+    nonisolated private static func hasCJK(_ string: String) -> Bool {
         string.unicodeScalars.contains { scalar in
             scalar.value >= 0x4E00 && scalar.value <= 0x9FFF
         }
