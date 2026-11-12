@@ -18,13 +18,18 @@ static BOOL wq_stat(NSString *path, struct stat *st) {
 }
 
 static NSData *wq_read(NSString *path, NSUInteger maxLength, NSString **error) {
-    NSData *data = [NSData dataWithContentsOfFile:path];
-    if (!data) {
+    NSFileHandle *handle = [NSFileHandle fileHandleForReadingAtPath:path];
+    if (!handle) {
         if (error) *error = @"cannot read";
         return nil;
     }
-    if (data.length > maxLength) {
-        if (error) *error = @"too large";
+    NSData *data = nil;
+    if (maxLength > 0) {
+        data = [handle readDataOfLength:maxLength];
+    }
+    [handle closeFile];
+    if (!data) {
+        if (error) *error = @"cannot read";
         return nil;
     }
     return data;
