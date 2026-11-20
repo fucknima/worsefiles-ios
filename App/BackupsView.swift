@@ -304,6 +304,7 @@ final class BackupsModel: ObservableObject {
                 if let snapshot = result.snapshot {
                     BackupStore.shared.add(snapshot)
                 }
+                AppSizeStore.shared.invalidate(target)
                 var text = result.summary
                 if !result.errors.isEmpty {
                     text += "\n" + result.errors.prefix(6).joined(separator: "\n")

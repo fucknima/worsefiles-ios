@@ -144,6 +144,9 @@ final class CleanupModel: ObservableObject {
                 .compactMap { $0.identifier })
             AppIconStore.shared.prefetch(result.targets.compactMap { self.iconIdentifier(for: $0) })
             Log.info("cleanup scan \(mode.rawValue): targets=\(result.targets.count) identified=\(result.targets.filter { $0.identifier != nil }.count) apps=\(self.appIdentifiers.count)")
+            for path in result.cleaned {
+                AppSizeStore.shared.invalidate(path)
+            }
             JobCenter.shared.finish(success: !token.isCancelled)
         }
     }
