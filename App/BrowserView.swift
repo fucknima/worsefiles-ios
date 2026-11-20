@@ -15,6 +15,7 @@ struct BrowserView: View {
     @ObservedObject private var index = ContainerIndex.shared
     @ObservedObject private var icons = AppIconStore.shared
     @ObservedObject private var appCatalog = AppCatalog.shared
+    @ObservedObject private var appSizes = AppSizeStore.shared
     @StateObject private var model: BrowserModel
     @State private var backupRequest: BackupRequest?
 
@@ -189,6 +190,9 @@ struct BrowserView: View {
         .listStyle(.plain)
         .contentMargins(.top, 0, for: .scrollContent)
         .refreshable {
+            if model.isAppRoot {
+                AppSizeStore.shared.invalidateAll()
+            }
             await model.refresh()
         }
     }
@@ -271,6 +275,11 @@ struct BrowserView: View {
                         .truncationMode(.middle)
                 }
                 Spacer(minLength: 8)
+                if model.isAppRoot, item.isDirectory, item.identifier != nil {
+                    Text(sizeText(for: item))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
                 if item.isDirectory && !model.selectionMode {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
@@ -460,6 +469,15 @@ struct BrowserView: View {
             .disabled(model.labelProgress != nil)
         }
 
+        if model.isAppRoot {
+            Button {
+                AppSizeStore.shared.invalidateAll()
+                app.flash("正在重新计算容器大小")
+            } label: {
+                Label("重新计算大小", systemImage: "arrow.clockwise.circle")
+            }
+        }
+
         Button {
             model.showInfo(currentDirectoryItem)
         } label: {
@@ -637,6 +655,15 @@ struct BrowserView: View {
     private func copy(_ items: [FSItem], moving: Bool) {
         guard !items.isEmpty else { return }
         app.setClipboard(ClipboardItem(paths: items.map { $0.path }, moving: moving))
+    }
+
+    private func sizeText(for item: FSItem) -> String {
+        if let bytes = appSizes.cachedSize(for: item.path) {
+            return Format.bytes(bytes)
+        }
+        if appSizes.hasFailed(item.path) { return "—" }
+        _ = appSizes.size(for: item.path)
+        return "计算中…"
     }
 
     private func detail(for item: FSItem) -> String {

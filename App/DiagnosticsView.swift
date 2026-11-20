@@ -236,6 +236,7 @@ struct DiagnosticsContent: View {
         detail.append("已安装应用：\(index.installedAppCount)（数据容器 \(index.installedPathCount)）")
         detail.append("应用列表：\(index.installedListAvailable ? "可用" : "不可用")")
         detail.append("图标缓存：\(AppIconStore.shared.cachedCount) 个，失败 \(AppIconStore.shared.missCount) 次")
+        detail.append("大小缓存：\(AppSizeStore.shared.cachedCount) 个容器")
         detail.append("后台继续：\(JobCenter.shared.diagnostic)")
         let appCounts = AppCatalog.shared.dataRootCounts()
         detail.append("应用分组：用户 \(appCounts[.user] ?? 0) / 系统 \(appCounts[.system] ?? 0) / 服务 \(appCounts[.service] ?? 0)")
